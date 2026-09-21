@@ -1,0 +1,82 @@
+[
+  {
+    "patient_id": "MIMIC-16466602",
+    "risk_band": "Medium",
+    "clinical_group": "cardiac_other",
+    "current_band": "High",
+    "current_score": 77.8,
+    "weeks_tracked": 5
+  },
+  {
+    "patient_id": "MIMIC-19014451",
+    "risk_band": "Medium",
+    "clinical_group": "cardiac_other",
+    "current_band": "Medium",
+    "current_score": 39.5,
+    "weeks_tracked": 5
+  },
+  {
+    "patient_id": "MIMIC-11145160",
+    "risk_band": "Medium",
+    "clinical_group": "cardiac_other",
+    "current_band": "Low",
+    "current_score": 18.9,
+    "weeks_tracked": 5
+  },
+  {
+    "patient_id": "MIMIC-10758777",
+    "risk_band": "High",
+    "clinical_group": "diabetes",
+    "current_band": "High",
+    "current_score": 83.2,
+    "weeks_tracked": 5
+  },
+  {
+    "patient_id": "MIMIC-10672726",
+    "risk_band": "Medium",
+    "clinical_group": "diabetes",
+    "current_band": "Medium",
+    "current_score": 39.3,
+    "weeks_tracked": 5
+  },
+  {
+    "patient_id": "MIMIC-15446497",
+    "risk_band": "Medium",
+    "clinical_group": "diabetes",
+    "current_band": "Low",
+    "current_score": 19.8,
+    "weeks_tracked": 5
+  },
+  {
+    "patient_id": "MIMIC-18284271",
+    "risk_band": "High",
+    "clinical_group": "general",
+    "current_band": "High",
+    "current_score": 94.0,
+    "weeks_tracked": 5
+  },
+  {
+    "patient_id": "MIMIC-17170079",
+    "risk_band": "Low",
+    "clinical_group": "general",
+    "current_band": "Medium",
+    "current_score": 39.7,
+    "weeks_tracked": 5
+  },
+  {
+    "patient_id": "MIMIC-16548419",
+    "risk_band": "Medium",
+    "clinical_group": "general",
+    "current_band": "Low",
+    "current_score": 19.9,
+    "weeks_tracked": 5
+  },
+  {
+    "patient_id": "MIMIC-12892273",
+    "risk_band": "High",
+    "clinical_group": "heart_failure",
+    "current_band": "High",
+    "current_score": 96.0,
+    "weeks_tracked": 5
+  }
+]

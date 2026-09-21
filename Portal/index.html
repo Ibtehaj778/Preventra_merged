@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in</title>
+
+  <!--
+  Shared login portal.
+
+  One page, no build step, no backend, no dependencies. Open index.html directly
+  or drop this folder on Vercel/Netlify.
+
+  What it does, and nothing more:
+    1. posts email + password to the auth service
+    2. keeps the token it gets back
+    3. reads `app_access` out of the token to decide which tiles to show
+    4. redirects into the chosen app with the token on the URL fragment
+
+  It never verifies a token - it cannot, and does not need to. The payload is
+  base64, so reading `app_access` here needs no secret. Each backend verifies the
+  signature itself, which is the only check that counts. This page holds no
+  secret and must never be given one.
+-->
+
+  <script>
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CONFIGURE THESE THREE THINGS
+    // ─────────────────────────────────────────────────────────────────────────────
+    const CONFIG = {
+      // Base URL of the auth service. No trailing slash.
+      // This portal's origin must be in ALLOWED_ORIGINS on that service, or the
+      // browser blocks the sign-in call and it looks like the service is down.
+      // Local: http://localhost:8000
+      AUTH_BASE_URL: 'https://preventra-cms-mimic-production.up.railway.app',
+
+      // The apps this portal can send people into. The `key` MUST match the string
+      // the auth service puts in the token's `app_access` list.
+      APPS: [
+        {
+          key: 'glp1',
+          name: 'GLP-1 Analytics',
+          blurb: 'Treatment response, adherence and payer return on investment.',
+          // FILL IN: the deployed GLP-1 frontend origin, e.g. https://glp1-xyz.vercel.app
+          // Origin only - no path, no trailing slash. Leave blank and the tile
+          // reports itself as not configured instead of navigating nowhere.
+          url: 'https://glp-1-adherence.vercel.app/',
+          handoff: 'fragment',        // 'fragment' -> #token=...   'query' -> ?token=...
+        },
+        {
+          key: 'readmissions',
+          name: 'Readmission Risk',
+          blurb: 'Discharge risk scoring, weekly monitoring and the clinician console.',
+          // FILL IN: your deployed Readmissions frontend origin.
+          url: 'https://preventra-cms-mimic.vercel.app/',
+          handoff: 'fragment',
+        },
+      ],
+    };
+    // ─────────────────────────────────────────────────────────────────────────────
+  </script>
+
+  <style>
+    /* Light only, on purpose. The logo is a solid teal mark on white and a demo
+     screen should look the same on every machine in the room - no dark-mode
+     branch to be surprised by on someone else's laptop. */
+    :root {
+      --brand: #3ecfae;
+      /* shield teal, from the logo */
+      --brand-deep: #2bb897;
+      /* hover / pressed */
+      --ink: #0e1b2a;
+      /* the navy in the cross */
+      --bg: #f4f7f8;
+      --surface: #ffffff;
+      --border: #dde5e6;
+      --text: #0e1b2a;
+      --muted: #5b6b76;
+      --accent: #0e1b2a;
+      /* buttons: navy on white reads at any size */
+      --accent-ink: #ffffff;
+      --danger-bg: #fdf2f2;
+      --danger-border: #f3c9c9;
+      --danger-text: #8a2020;
+      --radius: 10px;
+      --shadow: 0 1px 2px rgba(14, 27, 42, .05), 0 10px 28px rgba(14, 27, 42, .07);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px;
+    }
+
+    .card.wide {
+      max-width: 560px;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0 0 4px;
+      letter-spacing: -.01em;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0 0 24px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0 0 6px;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      margin-bottom: 16px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    input:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 1px;
+    }
+
+    button {
+      width: 100%;
+      padding: 11px 16px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--accent-ink);
+      background: var(--accent);
+      border: 1px solid transparent;
+      border-radius: 8px;
+    }
+
+    button:hover:not(:disabled) {
+      filter: brightness(1.25);
+    }
+
+    button:disabled {
+      opacity: .6;
+      cursor: progress;
+    }
+
+    /* The rule above means "submitting" on the sign-in button. On a tile it
+     would read as loading rather than unavailable, which is a different
+     thing and sends someone looking for the wrong fault. */
+    .tile:disabled {
+      cursor: not-allowed;
+    }
+
+    .switch {
+      margin: 14px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+    /* A button, not an anchor - it changes the form in place rather than
+       navigating, and a link that goes nowhere is a lie to a screen reader. */
+    .linkish {
+      background: none;
+      border: 0;
+      padding: 0;
+      width: auto;
+      font: inherit;
+      color: #0f766e;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .linkish:hover { filter: none; color: #115e59; }
+
+    button.ghost {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--border);
+      font-weight: 500;
+      margin-top: 8px;
+    }
+
+    .error {
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-text);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .error code {
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .who {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+    }
+
+    .who b {
+      font-weight: 600;
+    }
+
+    .who span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .tiles {
+      display: grid;
+      gap: 12px;
+    }
+
+    .tile {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 16px 18px;
+      cursor: pointer;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: inherit;
+      font: inherit;
+    }
+
+    .tile:hover {
+      border-color: var(--brand);
+      background: #f2fbf8;
+    }
+
+    .tile b {
+      display: block;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 3px;
+    }
+
+    .tile span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* Logo. Sized by height so a taller or shorter export still sits correctly. */
+    .brand {
+      text-align: center;
+      margin-bottom: 22px;
+    }
+
+    .brand img {
+      height: 84px;
+      width: auto;
+      display: inline-block;
+    }
+
+    .brand-fallback {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+      color: var(--brand);
+    }
+
+    .who-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .who-brand img {
+      height: 30px;
+      width: auto;
+    }
+
+    .none {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── sign in ─────────────────────────────────────────────────────────────── -->
+  <main class="card" id="login-view">
+    <!-- Save the Preventra logo as Portal/logo.png. If it is missing the wordmark
+       below takes its place, so a forgotten file never shows a broken image. -->
+    <div class="brand">
+      <img src="logo.png" alt="Preventra" onerror="this.remove();document.getElementById('brand-text').hidden=false">
+      <div class="brand-fallback" id="brand-text" hidden>Preventra</div>
+    </div>
+
+    <h1 id="form-title">Sign in</h1>
+    <p class="sub">One account for GLP-1 Analytics and Readmission Risk.</p>
+
+    <div class="error hidden" id="login-error"></div>
+
+    <!-- One form for both actions. Sign-up reveals two more fields rather than
+         living on a second page: it is the same request to a different path,
+         and a second page would duplicate the error handling. -->
+    <form id="login-form">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" required>
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+      <div id="signup-fields" class="hidden">
+        <label for="role">Role</label>
+        <input id="role" name="role" type="text" list="role-options" placeholder="Doctor">
+        <datalist id="role-options">
+          <option value="Doctor"></option><option value="Nurse"></option>
+          <option value="Hospital"></option><option value="Pharmacy"></option>
+          <option value="Insurance"></option><option value="Patient"></option>
+        </datalist>
+
+        <label for="org-name">Organisation</label>
+        <input id="org-name" name="org_name" type="text" placeholder="City Hospital">
+      </div>
+
+      <button type="submit" id="login-button">Sign in</button>
+    </form>
+
+    <p class="switch">
+      <span id="switch-text">No account yet?</span>
+      <button type="button" class="linkish" id="switch-mode">Create one</button>
+    </p>
+  </main>
+
+  <!-- ── choose an app ───────────────────────────────────────────────────────── -->
+  <main class="card wide hidden" id="apps-view">
+    <div class="who">
+      <div class="who-brand">
+        <img src="logo.png" alt="" onerror="this.remove()">
+        <div><b id="who-email">—</b><br><span id="who-org">—</span></div>
+      </div>
+      <button class="ghost" id="sign-out" style="width:auto;padding:6px 12px;margin:0">Sign out</button>
+    </div>
+    <h1>Choose an application</h1>
+    <p class="sub">You have access to the following.</p>
+    <div class="tiles" id="tiles"></div>
+  </main>
+
+  <script>
+    const TOKEN_KEY = 'portal_token';
+    const $ = (id) => document.getElementById(id);
+
+    /** sessionStorage, but never fatal. It is blocked on file:// and data: origins
+     *  and in some private modes; without this guard the whole sign-in throws and
+     *  the page looks broken for a reason that has nothing to do with the token.
+     *  Losing persistence across a reload is an acceptable demo cost. */
+    const store = {
+      get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+      set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* not persisted */ } },
+      del(k) { try { sessionStorage.removeItem(k); } catch { /* nothing to do */ } },
+    };
+
+    /** Read a JWT payload WITHOUT verifying it. Safe here: this only decides which
+     *  tiles to draw. Every real decision is made by a backend that checks the
+     *  signature, so a forged token gets someone a tile and then a 401. */
+    function readClaims(token) {
+      try {
+        const part = token.split('.')[1];
+        const pad = part.replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(decodeURIComponent(escape(atob(pad))));
+      } catch { return null; }
+    }
+
+    function isExpired(claims) {
+      return !claims?.exp || claims.exp * 1000 <= Date.now();
+    }
+
+    function showError(message, hint) {
+      const box = $('login-error');
+      box.innerHTML = hint ? `${message}<br><code>${hint}</code>` : message;
+      box.classList.remove('hidden');
+    }
+
+    function clearError() { $('login-error').classList.add('hidden'); }
+
+    /** Build the destination URL, putting the token where that app expects it.
+     *  Fragment by default: a fragment is never sent to the server, so the token
+     *  stays out of access logs, proxy logs and Referer headers. */
+    function destinationFor(app, token) {
+      const base = app.url.replace(/\/$/, '');
+      return app.handoff === 'query'
+        ? `${base}/?token=${encodeURIComponent(token)}`
+        : `${base}/#token=${encodeURIComponent(token)}`;
+    }
+
+    function renderApps(token, claims) {
+      $('who-email').textContent = claims.email || '—';
+      $('who-org').textContent =
+        [claims.role, claims.org_id].filter(Boolean).join(' · ') || 'signed in';
+
+      const granted = Array.isArray(claims.app_access) ? claims.app_access : [];
+      const available = CONFIG.APPS.filter((a) => granted.includes(a.key));
+      const tiles = $('tiles');
+      tiles.innerHTML = '';
+
+      if (!available.length) {
+        tiles.innerHTML =
+          '<p class="none">This account has no applications assigned. ' +
+          'Its <code>app_access</code> list is empty or names an app this portal ' +
+          'does not know about.</p>';
+      }
+
+      for (const app of available) {
+        const tile = document.createElement('button');
+        tile.className = 'tile';
+        tile.type = 'button';
+        const configured = Boolean((app.url || '').trim());
+        tile.innerHTML = configured
+          ? `<b>${app.name}</b><span>${app.blurb}</span>`
+          : `<b>${app.name}</b><span>Not configured yet - set its <code>url</code> in CONFIG.</span>`;
+        // An unconfigured tile is disabled rather than hidden: hiding it would look
+        // identical to the account not having access, which is a different problem
+        // and would be debugged in the wrong place.
+        tile.disabled = !configured;
+        if (configured) {
+          tile.addEventListener('click', () => {
+            window.location.href = destinationFor(app, token);
+          });
+        }
+        tiles.appendChild(tile);
+      }
+
+      $('login-view').classList.add('hidden');
+      $('apps-view').classList.remove('hidden');
+    }
+
+    function signIn(token) {
+      const claims = readClaims(token);
+      if (!claims) return showError('That token could not be read.');
+      if (isExpired(claims)) return showError('That session has expired. Sign in again.');
+      store.set(TOKEN_KEY, token);
+      renderApps(token, claims);
+    }
+
+    function signOut() {
+      store.del(TOKEN_KEY);
+      $('apps-view').classList.add('hidden');
+      $('login-view').classList.remove('hidden');
+      $('login-form').reset();
+      clearError();
+    }
+
+    // ── login ────────────────────────────────────────────────────────────────────
+    $('login-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearError();
+      const button = $('login-button');
+      button.disabled = true;
+      button.textContent = 'Signing in…';
+
+      try {
+        const path = MODE === 'signup' ? '/auth/signup' : '/auth/login';
+        const payload = MODE === 'signup'
+          ? { email: $('email').value, password: $('password').value,
+              role: ($('role').value || 'Doctor').trim(),
+              org_name: $('org-name').value.trim() }
+          : { email: $('email').value, password: $('password').value };
+
+        const response = await fetch(`${CONFIG.AUTH_BASE_URL.replace(/\/$/, '')}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          showError(body.detail || body.message || `Sign-in failed (${response.status}).`);
+          return;
+        }
+
+        // Accept whichever key the auth service uses, rather than failing on a name.
+        const token = body.token || body.access_token || body.jwt || body.accessToken;
+        if (!token) {
+          showError('The auth service did not return a token.',
+            `Keys it returned: ${Object.keys(body).join(', ') || 'none'}`);
+          return;
+        }
+        signIn(token);
+      } catch (err) {
+        // A thrown fetch is almost never a bad password. It is the request never
+        // completing: wrong URL, service down, or - most often - CORS.
+        showError(
+          'Could not reach the auth service. This is usually CORS or the service ' +
+          'being down, not your password.',
+          `${CONFIG.AUTH_BASE_URL}${MODE === 'signup' ? '/auth/signup' : '/auth/login'} — ${err.message}`);
+      } finally {
+        button.disabled = false;
+        button.textContent = MODE === 'signup' ? 'Create account' : 'Sign in';
+      }
+    });
+
+    // ── sign in / sign up ────────────────────────────────────────────────────
+    // Sign-up returns the same body as sign-in, token included, so a brand new
+    // account lands on the tiles instead of being bounced back to a login form.
+    let MODE = 'login';
+
+    function setMode(mode) {
+      MODE = mode;
+      const up = mode === 'signup';
+      $('form-title').textContent = up ? 'Create account' : 'Sign in';
+      $('login-button').textContent = up ? 'Create account' : 'Sign in';
+      $('signup-fields').classList.toggle('hidden', !up);
+      $('role').required = up;
+      $('password').setAttribute('autocomplete', up ? 'new-password' : 'current-password');
+      $('switch-text').textContent = up ? 'Already have an account?' : 'No account yet?';
+      $('switch-mode').textContent = up ? 'Sign in' : 'Create one';
+      clearError();
+    }
+
+    $('switch-mode').addEventListener('click',
+      () => setMode(MODE === 'login' ? 'signup' : 'login'));
+
+    $('sign-out').addEventListener('click', signOut);
+
+    // ── on load ──────────────────────────────────────────────────────────────────
+    (function start() {
+      // A token pasted on the URL wins. Lets the portal be exercised end to end with
+      // scripts/mint_test_token.py before the auth service is reachable.
+      const fromUrl = new URLSearchParams(
+        (window.location.hash || '').replace(/^#/, '')).get('token');
+      if (fromUrl) {
+        window.history.replaceState(null, '', window.location.pathname);
+        return signIn(fromUrl);
+      }
+      const stored = store.get(TOKEN_KEY);
+      if (stored) {
+        const claims = readClaims(stored);
+        if (claims && !isExpired(claims)) return renderApps(stored, claims);
+        store.del(TOKEN_KEY);
+      }
+    })();
+  </script>
+</body>
+
+</html>

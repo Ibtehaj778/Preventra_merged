@@ -1,0 +1,101 @@
+itemid,label,fluid,category
+51732,STX1,Blood,Chemistry
+52401,SSC-D,Q,Hematology
+51786,Clostrid,Cerebrospinal Fluid,Chemistry
+51478,Glucose,Urine,Hematology
+51975,Coproporphyrins,Urine,Chemistry
+52151,NRBC,Blood,Hematology
+52233,Delete,Cerebrospinal Fluid,Hematology
+52351,Fetal Hgb,Other Body Fluid,Hematology
+52206,RetFlg,Blood,Hematology
+53142,Alpha-1-antitrypsin,Blood,Chemistry
+52003,Uroporphyrins,Urine,Chemistry
+52395,FL1-%FL2,Q,Hematology
+51059,"Total Protein, Pleural",Pleural,Chemistry
+52034,Total Calcium,Blood,Blood Gas
+51103,Uhold,Urine,Chemistry
+51969,"Catecholamines, Urine",Urine,Chemistry
+52352,FETAL LUNG MATURITY - LBC,Other Body Fluid,Hematology
+53128,11-Deoxycorticosterone,Blood,Chemistry
+51304,CD103,Bone Marrow,Hematology
+51751,Uncon Bil,Blood,Chemistry
+52647,Urea Nitrogen,Blood,Chemistry
+51735,STX4,Blood,Chemistry
+53129,3t,Blood,Chemistry
+52403,Bile,Stool,Hematology
+51076,"Bicarbonate, Urine",Urine,Chemistry
+51616,Epstein-Barr Virus IgG Ab Value,Blood,Chemistry
+52070,Absolute CD19 Count,Blood,Hematology
+51945,Norovirus Genogroup I,Stool,Chemistry
+51672,Immune Complexes,Blood,Chemistry
+52222,Atyps#,Cerebrospinal Fluid,Hematology
+52383,Hypersegmented Neutrophils,Pleural,Hematology
+50975,Protein Electrophoresis,Blood,Chemistry
+51514,Urobilinogen,Urine,Hematology
+51295,TdT,Blood,Hematology
+52442,Lactate,Blood,Blood Gas
+51742,Toxoplasma IgG Ab Value,Blood,Chemistry
+51365,Atypical Lymphocytes,Joint Fluid,Hematology
+51473,Cysteine Crystals,Urine,Hematology
+51812,"Bilirubin, Total, Joint Fluid",Joint Fluid,Chemistry
+51614,Epstein-Barr Virus  EBNA IgG Ab,Blood,Chemistry
+51655,HIV 2 Ab Confirmation,Blood,Chemistry
+52268,Mesothelial cells,Cerebrospinal Fluid,Hematology
+52311,Promyelocytes,Joint Fluid,Hematology
+52216,BlasFlg,Blood,Hematology
+52271,Metas#,Cerebrospinal Fluid,Hematology
+52300,Hypersegmented Neutrophils #,Joint Fluid,Hematology
+50909,Cortisol,Blood,Chemistry
+51718,Reserved1,Blood,Chemistry
+50811,Hemoglobin,Blood,Blood Gas
+50952,Iron,Blood,Chemistry
+50828,Ventilator,Blood,Blood Gas
+52144,Methemoglobin,Blood,Hematology
+51075,"Benzodiazepine Screen, Urine",Urine,Chemistry
+51382,Polys,Joint Fluid,Hematology
+51787,"Creatinine, CSF",Cerebrospinal Fluid,Chemistry
+51288,Sedimentation Rate,Blood,Hematology
+50879,Barbiturate Screen,Blood,Chemistry
+52184,TCR Alpha-Beta,Blood,Hematology
+51987,Nitrite,Urine,Chemistry
+51136,Alpha Antiplasmin,Blood,Hematology
+52376,Bands#,Pleural,Hematology
+50876,Anti-Smooth Muscle Antibody,Blood,Chemistry
+51477,Free Fat,Urine,Hematology
+51468,Calcium Carbonate Crystals,Urine,Hematology
+51375,Lymphocytes,Joint Fluid,Hematology
+52202,PltClmp,Blood,Hematology
+51881,Norovirus Genogroup II,Other Body Fluid,Chemistry
+51476,Epithelial Cells,Urine,Hematology
+50833,Potassium,Other Body Fluid,Blood Gas
+51493,RBC,Urine,Hematology
+51615,Epstein-Barr Virus EBNA IgG Ab,Blood,Chemistry
+51899,Trichomonas vaginalis,Other Body Fluid,Chemistry
+52137,Inh Scr,Blood,Hematology
+50895,Calculated TBG,Blood,Chemistry
+52049,Bands#,Ascites,Hematology
+51112,Basophils,Ascites,Hematology
+51109,"Urine Volume, Total",Urine,Chemistry
+51587,CMV IgG Ab Value,Blood,Chemistry
+52001,"Urine PEP, Gamma region",Urine,Chemistry
+51973,Copi,Urine,Chemistry
+50982,Sex Hormone Binding Globulin,Blood,Chemistry
+51232,Hypersegmented Neutrophils,Blood,Hematology
+50899,Carbamazepine,Blood,Chemistry
+51762,EE1,Blood,Chemistry
+50853,25-OH Vitamin D,Blood,Chemistry
+52238,Delete,Cerebrospinal Fluid,Hematology
+50921,Estradiol,Blood,Chemistry
+52005,UTX2,Urine,Chemistry
+51329,CD57,Bone Marrow,Hematology
+51719,Reserved3,Blood,Chemistry
+52145,Mono Spot Test,Blood,Hematology
+50848,"Sodium, Ascites",Ascites,Chemistry
+52131,HIT-Ab Interpreted Result,Blood,Hematology
+52333,Tr-acid,Bone Marrow,Hematology
+51335,FMC-7,Bone Marrow,Hematology
+51271,"Protein C, Functional",Blood,Hematology
+51753,VZV IgG Ab,Blood,Chemistry
+52341,CD 1a,Other Body Fluid,Hematology
+53141,Alpha-1,Blood,Chemistry
+51279,Red Blood Cells,Blood,Hematology

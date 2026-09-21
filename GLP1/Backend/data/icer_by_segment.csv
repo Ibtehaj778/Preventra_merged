@@ -1,0 +1,9 @@
+cluster,segment,comparator,icer_weight,icer_hba1c
+0,Low Urgency Dropout Risk,insulin_glargine,842.51,-8785.5
+0,Low Urgency Dropout Risk,sglt2_inhibitor,1422.79,166207.73
+1,Financial Barrier Dropout Risk,insulin_glargine,793.93,-15046.72
+1,Financial Barrier Dropout Risk,sglt2_inhibitor,1127.1,16496.21
+2,Low Friction Strong Adherer,insulin_glargine,564.35,22014.71
+2,Low Friction Strong Adherer,sglt2_inhibitor,578.01,8014.47
+3,Moderate Risk Moderate Adherer,insulin_glargine,544.99,-6924.32
+3,Moderate Risk Moderate Adherer,sglt2_inhibitor,589.97,25316.46

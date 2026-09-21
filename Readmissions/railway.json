@@ -1,0 +1,26 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile",
+    "watchPatterns": [
+      "api/**",
+      "models/**",
+      "requirements-api.txt",
+      "Dockerfile",
+      ".dockerignore",
+      "railway.json",
+      "data/mimic/model/results/phase1_model.joblib",
+      "data/mimic/model/results/mimic_feature_spec.json",
+      "data/mimic/model/results/model_card_phase1.json",
+      "docs/mimic/band_thresholds_mimic.json"
+    ]
+  },
+  "deploy": {
+    "healthcheckPath": "/healthz",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3,
+    "numReplicas": 1
+  }
+}

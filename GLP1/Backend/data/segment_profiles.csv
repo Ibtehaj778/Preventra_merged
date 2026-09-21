@@ -1,0 +1,7 @@
+,,RIDAGEYR,RIDAGEYR,BMXBMI,BMXBMI,LBXGH,LBXGH,avg_oop_cost,avg_oop_cost,income_cost_pressure,income_cost_pressure,bio_friction,bio_friction,system_refill_score,system_refill_score,comorbidity_score,comorbidity_score,is_adherent,is_adherent
+,,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std
+cluster,segment_label,,,,,,,,,,,,,,,,,,
+0,"Low Clinical Urgency, Moderate Cost Pressure → Dropout Prone",44.9742,17.2039,35.8779,6.1512,5.3511,0.2846,40.5132,25.7024,25.3842,40.5386,0.5657,0.0,1.1884,0.0686,0.3013,0.4589,0.2077,0.4058
+1,"Moderate Glycemic Risk, High Financial Barrier → Dropout Prone",58.76,13.9585,33.6461,7.1315,6.7689,1.4782,50.9029,28.7517,31.3266,44.0284,0.5657,0.0,1.2084,0.0761,1.3417,0.4744,0.3085,0.462
+2,"Low Side Effect Burden, High Clinical Motivation → Strong Adherer",55.3013,17.2876,34.7204,6.7708,6.2026,1.4513,83.0116,63.5659,47.6826,58.4816,0.2437,0.0467,0.9741,0.0371,0.9232,0.6768,0.8535,0.3536
+3,"Borderline Glycemic Risk, Moderate Cost Pressure → Moderate Adherer",59.4979,14.5956,34.2329,7.0921,6.5478,1.2108,41.0604,27.9127,23.6508,34.9362,0.5657,0.0,1.1553,0.0329,1.3101,0.4627,0.4061,0.4913

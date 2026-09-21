@@ -1,0 +1,12 @@
+{
+  "high_score_threshold": 72.5,
+  "low_score_threshold": 47.5,
+  "high_prob_threshold": 0.7249,
+  "low_prob_threshold": 0.4752,
+  "population_readmission_rate": 0.1065,
+  "band_definitions": {
+    "High": "risk_score >= 72.5",
+    "Medium": "47.5 <= risk_score < 72.5",
+    "Low": "risk_score < 47.5"
+  }
+}

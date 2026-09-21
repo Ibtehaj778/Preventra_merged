@@ -1,0 +1,5 @@
+segment,day_30,day_60,day_90,day_180
+Low Urgency Dropout Risk,0.1866,0.3386,0.4343,0.7923
+Financial Barrier Dropout Risk,0.1445,0.2334,0.3118,0.6915
+Low Friction Strong Adherer,0.0046,0.0076,0.0109,0.1465
+Moderate Risk Moderate Adherer,0.085,0.1521,0.209,0.5939

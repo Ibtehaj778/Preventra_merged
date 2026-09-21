@@ -1,0 +1,20 @@
+# Everything that is NOT needed to serve the API. Install on top of
+# requirements.txt for local development, notebooks and the data pipeline:
+#     pip install -r requirements.txt -r requirements-dev.txt
+-r requirements.txt
+
+# --- Mongo seeder (scripts/migrate_csv_to_mongo.py) ---
+pandas==2.2.0
+lifelines==0.29.0
+
+# --- Tests (Model/consequence/tests/) ---
+pytest==9.1.0
+
+# --- Notebooks (Model/model.ipynb, Processing/cleanup.ipynb) ---
+shap==0.45.0
+matplotlib==3.10.9
+seaborn==0.13.2
+
+# --- Offline data collectors (Data_Collection/) ---
+requests==2.34.2
+openpyxl==3.1.5

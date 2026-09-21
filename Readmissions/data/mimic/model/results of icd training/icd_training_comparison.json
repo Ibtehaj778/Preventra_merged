@@ -1,0 +1,72 @@
+{
+  "cohort": {
+    "admissions": 296760,
+    "patients": 148669,
+    "readmission_rate": 0.1966066855371344
+  },
+  "test_set": {
+    "admissions": 59835,
+    "readmission_rate": 0.1962563716888109
+  },
+  "baseline": {
+    "AUC-ROC": 0.7229286750056515,
+    "AUC-PR": 0.3920869758836537,
+    "Brier": 0.14042100417779763,
+    "calib_slope": 1.0098096470864806,
+    "mean_pred": 0.19809497663429362
+  },
+  "enriched": {
+    "AUC-ROC": 0.7257013800063546,
+    "AUC-PR": 0.3921746450565896,
+    "Brier": 0.14020548280205977,
+    "calib_slope": 1.0092500938603852,
+    "mean_pred": 0.19806212865134828
+  },
+  "new_features": [
+    "chap_blood",
+    "chap_digestive",
+    "chap_genitourinary",
+    "chap_infectious",
+    "chap_mental",
+    "chap_neoplasm",
+    "chap_nervous",
+    "chap_obstetric",
+    "chap_respiratory",
+    "chap_skin",
+    "n_chapters",
+    "n_categories",
+    "n_status_codes",
+    "n_symptom_codes",
+    "has_complication",
+    "dx_sepsis",
+    "principal_chapter",
+    "combo_cardiorenal",
+    "combo_diabetes_renal",
+    "combo_cardiopulmonary",
+    "combo_cancer_plus_organ"
+  ],
+  "new_feature_attribution_share": 0.06477784533325741,
+  "new_feature_ranks": {
+    "chap_blood": 22,
+    "n_symptom_codes": 24,
+    "chap_neoplasm": 32,
+    "chap_genitourinary": 38,
+    "chap_nervous": 42,
+    "n_categories": 52,
+    "has_complication": 59,
+    "n_status_codes": 68,
+    "chap_obstetric": 78,
+    "dx_sepsis": 81,
+    "chap_digestive": 83,
+    "chap_mental": 84,
+    "n_chapters": 88,
+    "combo_cardiopulmonary": 92,
+    "combo_cardiorenal": 93,
+    "chap_respiratory": 95,
+    "chap_skin": 97,
+    "combo_cancer_plus_organ": 103,
+    "chap_infectious": 104,
+    "combo_diabetes_renal": 106,
+    "principal_chapter": 110
+  }
+}

@@ -1,0 +1,5 @@
+cluster,segment,n,adherence_rate,avg_annual_cost,avg_oop_cost,avg_weight_loss_pct,avg_hba1c_reduction,cost_per_weight_pct,cost_per_hba1c_pt,wasted_spend_per_pt,total_annual_spend
+0,Low Urgency Dropout Risk,1902,0.2077,9456.57,40.51,5.57,0.822,1697.72,11500.08,7492.67,17986400.0
+1,Financial Barrier Dropout Risk,2104,0.3085,10105.51,50.9,6.82,1.061,1482.6,9522.9,6988.37,21262000.0
+2,Low Friction Strong Adherer,2383,0.8535,15938.31,83.01,20.54,2.065,776.13,7716.82,2334.23,37981000.0
+3,Moderate Risk Moderate Adherer,1177,0.4061,7800.0,41.06,6.39,0.879,1220.02,8872.85,4632.29,9180600.0

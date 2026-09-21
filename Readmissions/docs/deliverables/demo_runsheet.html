@@ -1,0 +1,268 @@
+<title>Dashboard Demo Run-Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#faf7f3; --surface:#fff; --surface-2:#f2ece4; --ink:#241d16; --ink-2:#4d4237;
+  --muted:#7d7063; --line:#e5dbcf; --line-2:#d3c5b4;
+  --accent:#a4551d; --accent-soft:#f6e9dc;
+  --say:#2f6b4f; --say-bg:#e7f2ec; --warn:#a3341f; --warn-bg:#fae9e5;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#17130f; --surface:#1f1a15; --surface-2:#2a231c; --ink:#f0e7dc; --ink-2:#cdbfae;
+  --muted:#9a8b7a; --line:#332b23; --line-2:#463a2e;
+  --accent:#e2914f; --accent-soft:#33220f;
+  --say:#7fc39c; --say-bg:#172c21; --warn:#f0917c; --warn-bg:#331812;
+}}
+:root[data-theme="dark"]{
+  --bg:#17130f; --surface:#1f1a15; --surface-2:#2a231c; --ink:#f0e7dc; --ink-2:#cdbfae;
+  --muted:#9a8b7a; --line:#332b23; --line-2:#463a2e;
+  --accent:#e2914f; --accent-soft:#33220f;
+  --say:#7fc39c; --say-bg:#172c21; --warn:#f0917c; --warn-bg:#331812;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Source Sans 3",system-ui,sans-serif;font-size:16px;line-height:1.62;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3,.num{font-family:Archivo,system-ui,sans-serif;text-wrap:balance;margin:0}
+code,kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.85em}
+kbd{background:var(--surface-2);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px;
+    color:var(--ink);white-space:nowrap}
+.wrap{max-width:860px;margin:0 auto;padding:44px 24px 100px}
+
+header{border-bottom:3px solid var(--ink);padding-bottom:20px;margin-bottom:12px}
+header h1{font-size:2.6rem;font-weight:700;letter-spacing:-.025em;line-height:1.05}
+header p{color:var(--muted);margin:10px 0 0;max-width:60ch}
+.meta{display:flex;gap:22px;flex-wrap:wrap;margin-top:16px;font-size:13px;color:var(--muted)}
+.meta b{color:var(--accent);font-family:Archivo,sans-serif;font-size:15px}
+
+h2.sec{font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+  font-weight:700;margin:48px 0 4px;padding-top:14px;border-top:1px solid var(--line)}
+h2.sec + p.lede{color:var(--muted);margin:0 0 18px;font-size:15px}
+
+.step{display:grid;grid-template-columns:52px minmax(0,1fr);gap:18px;margin:0 0 6px}
+.rail{display:flex;flex-direction:column;align-items:center}
+.num{width:38px;height:38px;border-radius:50%;background:var(--ink);color:var(--bg);
+  display:grid;place-items:center;font-weight:700;font-size:15px;flex:none}
+.rail .line{flex:1;width:2px;background:var(--line-2);margin:6px 0 0}
+.step:last-child .rail .line{display:none}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  padding:18px 20px;margin-bottom:20px}
+.card h3{font-size:1.18rem;font-weight:600;letter-spacing:-.01em}
+.card .t{float:right;font-size:11px;color:var(--muted);font-family:"JetBrains Mono",monospace;
+  background:var(--surface-2);border-radius:20px;padding:2px 9px;margin-left:12px}
+.card p{margin:8px 0 0;color:var(--ink-2)}
+.do{margin:12px 0 0;padding:10px 14px;background:var(--surface-2);border-radius:7px;
+  font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--ink-2);line-height:1.7}
+.say{margin:12px 0 0;padding:11px 15px;background:var(--say-bg);border-left:3px solid var(--say);
+  border-radius:0 7px 7px 0}
+.say b{display:block;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--say);font-family:Archivo,sans-serif;margin-bottom:3px}
+.say p{margin:0;color:var(--ink);font-size:15.5px}
+.warn{margin:12px 0 0;padding:11px 15px;background:var(--warn-bg);border-left:3px solid var(--warn);
+  border-radius:0 7px 7px 0;font-size:14.5px;color:var(--ink-2)}
+.warn b{color:var(--warn)}
+
+ul.check{list-style:none;padding:0;margin:0}
+ul.check li{background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:14px 18px;margin-bottom:9px}
+ul.check li b{font-family:Archivo,sans-serif;font-size:15.5px}
+ul.check li p{margin:5px 0 0;color:var(--ink-2);font-size:15px}
+
+table{border-collapse:collapse;width:100%;margin-top:10px;font-size:15px}
+th{text-align:left;font-family:Archivo,sans-serif;font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);padding:7px 12px;border-bottom:1px solid var(--line-2)}
+td{padding:11px 12px;border-top:1px solid var(--line);color:var(--ink-2);vertical-align:top}
+td:first-child{font-weight:600;color:var(--ink);width:38%}
+.scroll{overflow-x:auto}
+.n{font-variant-numeric:tabular-nums}
+@media (max-width:640px){
+  .step{grid-template-columns:36px minmax(0,1fr);gap:12px}
+  .num{width:30px;height:30px;font-size:13px}
+  header h1{font-size:2rem}
+  .wrap{padding:28px 16px 70px}
+}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Dashboard Demo Run-Sheet</h1>
+  <p>Sequence, click paths and prepared lines for the live client walkthrough. Every number below is
+     from the current batch — if the batch changes, the numbers change.</p>
+  <div class="meta">
+    <span><b>~13 min</b> walkthrough</span>
+    <span><b>6</b> acts</span>
+    <span><b>batch 2026-09-08</b></span>
+    <span><b>4,000</b> patients scored</span>
+  </div>
+</header>
+
+<h2 class="sec">Before the meeting</h2>
+<p class="lede">Four things. The first one will embarrass you if you skip it.</p>
+<ul class="check">
+  <li><b>Ship the Manual Entry change — the live site still has it</b>
+    <p>I disabled it locally, but your deployed backend still answers <code>200</code> on
+    <code>POST /api/patients/predict</code> and “Manual Entry” is still in the live Vercel bundle.
+    Merge to <code>main</code> — that is the branch both platforms deploy from:</p>
+    <div class="do">git add -A &amp;&amp; git commit -m "Disable manual entry" &amp;&amp; git push origin Latest<br>
+    git checkout main &amp;&amp; git merge Latest &amp;&amp; git push origin main &amp;&amp; git checkout Latest</div>
+    <p>No new environment variable needed — the flag defaults to off on both sides. Wait for both
+    deploys to go green before you present.</p></li>
+
+  <li><b>Open every page once, 10 minutes before</b>
+    <p>Railway is always-on so there is no cold start, but load the dashboard, a patient, and
+    Analytics anyway. It warms the model in memory and proves Atlas is reachable from wherever you
+    are sitting.</p></li>
+
+  <li><b>Check the Railway trial counter</b>
+    <p>The banner reads “30 days or $4.99 left”. The clock expires first, around
+    <b>14 October</b>. If the demo is after that, upgrade to Hobby ($5/mo) beforehand.</p></li>
+
+  <li><b>Decide local or live, and stick to it</b>
+    <p>Live is more convincing and the latency is fine — <span class="n">1.1 s</span> for the
+    dashboard. Only fall back to <code>localhost</code> if the venue's network is unreliable.</p></li>
+</ul>
+
+<h2 class="sec">The walkthrough</h2>
+<p class="lede">Six acts. The third one is the one they will remember — do not rush to it and do not skip it.</p>
+
+<div class="step"><div class="rail"><div class="num">1</div><div class="line"></div></div>
+<div class="card"><span class="t">1 min</span>
+  <h3>Open on the whole population</h3>
+  <p>Land on the dashboard and let the header sit on screen before you say anything.</p>
+  <div class="do">Open the dashboard root. Do not touch any filter yet.</div>
+  <div class="say"><b>Say</b><p>“Every patient discharged from this hospital, scored before they
+  leave. Four thousand of them. Six hundred and sixty are high risk — that's who this screen is
+  for.”</p></div>
+  <p style="margin-top:10px"><b>On screen:</b> <span class="n">4,000</span> scored ·
+  <span class="n">660</span> High · <span class="n">582</span> Medium ·
+  <span class="n">2,758</span> Low.</p>
+</div></div>
+
+<div class="step"><div class="rail"><div class="num">2</div><div class="line"></div></div>
+<div class="card"><span class="t">2 min</span>
+  <h3>The worklist is ranked, not alphabetical</h3>
+  <p>Scroll the first few rows slowly. Point at the columns rather than reading them out.</p>
+  <div class="do">Point at: Current Risk → Since Discharge → Trend → Risk Band → Diagnoses → Key Risk Driver</div>
+  <div class="say"><b>Say</b><p>“This is a coordinator's morning queue. Highest risk at the top,
+  and every row already says <em>why</em> — they don't have to open anything to triage.”</p></div>
+  <p style="margin-top:10px"><b>Top row:</b> <code>MIMIC-12892273</code> at
+  <span class="n">96.0%</span>, worsening.</p>
+</div></div>
+
+<div class="step"><div class="rail"><div class="num">3</div><div class="line"></div></div>
+<div class="card"><span class="t">3 min</span>
+  <h3>The diagnosis catch — your strongest moment</h3>
+  <p>Stay on that top row. Its principal diagnosis is <b>“Hypotension, unspecified”</b>. But the
+  row says <b>Monitored as: Heart failure</b>.</p>
+  <div class="do">Click <kbd>+3 more diagnoses</kbd> on the top row.</div>
+  <p>The list opens: <b>Chronic systolic heart failure</b> is there as a <em>secondary</em>
+  diagnosis, tagged Heart failure. Also present: acute myeloid leukemia, other cardiomyopathies.</p>
+  <div class="say"><b>Say</b><p>“If we'd only read the principal diagnosis, this patient would be
+  filed under low blood pressure and nobody would be watching his heart. The heart failure is the
+  third code down. That's why we monitor on every diagnosis, not just the headline one.”</p></div>
+  <div class="warn">Have the number ready: <b>4 of 11</b> coded diagnoses are carried into the
+  extract. If they ask why not all eleven — that's a deliberate cap, and it's documented.</div>
+</div></div>
+
+<div class="step"><div class="rail"><div class="num">4</div><div class="line"></div></div>
+<div class="card"><span class="t">3 min</span>
+  <h3>The trend — this is the actual product</h3>
+  <p>Open that same patient and go to the risk trend.</p>
+  <div class="do">Click the patient row → open the weekly trend view.</div>
+  <div class="scroll"><table>
+    <tr><th>Week</th><th>Score</th><th>What it means</th></tr>
+    <tr><td>At discharge</td><td class="n">64.3%</td><td>High, but so are 659 others</td></tr>
+    <tr><td>Week 1</td><td class="n">66.7%</td><td>Barely moved</td></tr>
+    <tr><td>Week 2</td><td class="n">74.8%</td><td>Now it's a direction</td></tr>
+    <tr><td>Week 3</td><td class="n">85.3%</td><td>Escalating</td></tr>
+    <tr><td>Week 4</td><td class="n">96.0%</td><td><b>+31.7 since discharge</b></td></tr>
+  </table></div>
+  <p style="margin-top:12px">The card reads <b>Deterioration</b>, with the action:
+  <em>“Alert the assigned care coordinator, increase check-in frequency, and review the discharge
+  plan.”</em> Week 4's top two drivers are <b>weight +2.8 kg</b> and
+  <b>medication adherence 47%</b>.</p>
+  <div class="say"><b>Say</b><p>“The discharge score said ‘high risk, keep an eye on him.’ The trend
+  says ‘act this week.’ And it names the two things to act on — he's holding nearly three kilos of
+  fluid and he's taking less than half his medication. Both are fixable with a phone call.”</p></div>
+</div></div>
+
+<div class="step"><div class="rail"><div class="num">5</div><div class="line"></div></div>
+<div class="card"><span class="t">2 min</span>
+  <h3>Slice it the way a real team is organised</h3>
+  <p>Back to the worklist. Open the condition filter.</p>
+  <div class="do">Click the Condition filter → select <kbd>Heart failure</kbd> → then add <kbd>Diabetes</kbd> to show multi-select</div>
+  <div class="scroll"><table>
+    <tr><th>Group</th><th>Patients</th><th>Group</th><th>Patients</th></tr>
+    <tr><td>Surgery or injury</td><td class="n">664</td><td>Heart failure</td><td class="n">413</td></tr>
+    <tr><td>Heart disease</td><td class="n">547</td><td>Cancer</td><td class="n">395</td></tr>
+    <tr><td>Chronic lung disease</td><td class="n">383</td><td>Mental health</td><td class="n">374</td></tr>
+    <tr><td>Diabetes</td><td class="n">302</td><td>Stroke / neuro</td><td class="n">269</td></tr>
+  </table></div>
+  <div class="say"><b>Say</b><p>“Eleven condition groups. A heart failure nurse opens this and sees
+  her 413 patients, not four thousand. And because patients carry several conditions, you can ask
+  for anyone who is <em>both</em> — that's where the hard cases live.”</p></div>
+</div></div>
+
+<div class="step"><div class="rail"><div class="num">6</div><div class="line"></div></div>
+<div class="card"><span class="t">2 min</span>
+  <h3>Close on the numbers</h3>
+  <p>Go to Analytics. Do not read the whole table — land on two figures.</p>
+  <div class="do">Analytics → Model Performance Benchmarks</div>
+  <div class="scroll"><table>
+    <tr><th>Metric</th><th>Value</th><th>Say it like this</th></tr>
+    <tr><td>AUC-ROC</td><td class="n">0.723</td><td>“Show it one patient who came back and one who didn't — it ranks them correctly 72% of the time.”</td></tr>
+    <tr><td>Recall</td><td class="n">0.601</td><td>“It catches six in ten of the patients who do come back.”</td></tr>
+    <tr><td>Precision</td><td class="n">0.342</td><td>“One in three flagged actually returns — against a base rate of one in five.”</td></tr>
+  </table></div>
+  <p style="margin-top:12px">Then the <b>Top Drivers</b> table: <em>Gap before this admission</em>
+  appears in <span class="n">82%</span> of the high-risk cohort, <em>prior admissions</em> in
+  <span class="n">53%</span>.</p>
+  <div class="say"><b>Say</b><p>“It isn't a black box. Across the whole high-risk group, the single
+  most common reason is that they were discharged and came straight back — which is exactly what a
+  clinician would tell you to look for.”</p></div>
+</div></div>
+
+<h2 class="sec">Do not click these</h2>
+<ul class="check">
+  <li><b>The Alerts bell</b>
+    <p>The collection is empty — <span class="n">0</span> alerts. It opens onto a blank panel and
+    costs you the momentum.</p></li>
+  <li><b>AI Insights, without talking over it</b>
+    <p>It works, but takes <span class="n">6.5 s</span> live. If you use it, click it and keep
+    talking — do not click and wait in silence.</p></li>
+</ul>
+
+<h2 class="sec">If they ask</h2>
+<div class="scroll"><table>
+  <tr><th>Question</th><th>Answer</th></tr>
+  <tr><td>Is this real patient data?</td>
+      <td>Yes — MIMIC-IV, the de-identified critical care database from Beth Israel Deaconess. The
+      model was trained on <span class="n">296,760</span> hospital stays from
+      <span class="n">148,669</span> patients.</td></tr>
+  <tr><td>How accurate is it?</td>
+      <td>AUC-ROC <span class="n">0.723</span>, and the probabilities are calibrated — a score of 60%
+      means roughly 60%. Patients were split so no one appears in both training and test.</td></tr>
+  <tr><td>Where do the weekly numbers come from?</td>
+      <td>The weekly series is modelled. MIMIC-IV doesn't carry post-discharge observations at a
+      weekly cadence — its outpatient table is opportunistic, a median of 22 days to a first
+      reading. What you're seeing is the monitoring design and the exact API a real device or
+      pharmacy feed would populate.</td></tr>
+  <tr><td>Can we add our own patients?</td>
+      <td>Manual entry is turned off on this deployment. The intended path is a batch feed from the
+      discharge system, not typing.</td></tr>
+  <tr><td>Can you show it was right?</td>
+      <td>Not from this screen yet — the serving database holds predictions, not outcomes. The
+      outcome exists in the training data (<span class="n">19.7%</span> readmission rate) and can be
+      joined in. Offer it as the next step.</td></tr>
+  <tr><td>What does a coordinator actually do with it?</td>
+      <td>Open the queue, work top-down, and use the driver line to decide the call. The trend view
+      tells them who has changed since last week.</td></tr>
+</table></div>
+
+<h2 class="sec">Leave-behind</h2>
+<p style="color:var(--ink-2)">Send the data dictionary — every column in the five cohort tables and
+the weekly collection, with ranges, missingness, and the caveats an analyst needs. It answers most
+follow-up questions without another meeting.</p>
+</div>

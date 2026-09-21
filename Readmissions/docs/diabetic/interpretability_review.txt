@@ -1,0 +1,87 @@
+======================================================================
+NeuroShield -- Interpretability Review
+Week 3 Gate: Top-3 Driver Labels for 4 High-Risk Patients
+High-risk threshold: score >= 72.5
+Depth weight base: 2.5 (higher = more patient-specific drivers)
+======================================================================
+
+REVIEWER INSTRUCTIONS:
+For each patient below, read the three driver labels aloud.
+Ask: Would a care manager with no data science background understand
+why this factor increases readmission risk for this patient?
+If any label is ambiguous, note it and update LABEL_MAP in this file.
+
+======================================================================
+Patient 1/4
+  Risk Score:     80.5 / 100
+  Risk Band:      High
+  Actual outcome: NO
+  --- Top-3 Risk Drivers ---
+  [1] Prior hospital admissions in the past year: 6 (frequent admissions signal ongoing clinical instability)
+  [2] Length of hospital stay: 1 days (longer stays often reflect greater illness severity and complex recovery needs)
+  [3] Decision path too shallow to extract additional driver. Retrain with greater max_depth to improve driver diversity.
+
+  REVIEWER: Were all 3 labels clear? [ ] Yes  [ ] Needs rewording
+  Notes: ____________________________________________
+
+----------------------------------------------------------------------
+Patient 2/4
+  Risk Score:     80.5 / 100
+  Risk Band:      High
+  Actual outcome: NO
+  --- Top-3 Risk Drivers ---
+  [1] Prior hospital admissions in the past year: 5 (frequent admissions signal ongoing clinical instability)
+  [2] Length of hospital stay: 4 days (longer stays often reflect greater illness severity and complex recovery needs)
+  [3] Decision path too shallow to extract additional driver. Retrain with greater max_depth to improve driver diversity.
+
+  REVIEWER: Were all 3 labels clear? [ ] Yes  [ ] Needs rewording
+  Notes: ____________________________________________
+
+----------------------------------------------------------------------
+Patient 3/4
+  Risk Score:     84.8 / 100
+  Risk Band:      High
+  Actual outcome: NO
+  --- Top-3 Risk Drivers ---
+  [1] Prior hospital admissions in the past year: 12 (frequent admissions signal ongoing clinical instability)
+  [2] Number of lab procedures during stay: 63 (more procedures often indicate higher diagnostic uncertainty or clinical severity)
+  [3] Decision path too shallow to extract additional driver. Retrain with greater max_depth to improve driver diversity.
+
+  REVIEWER: Were all 3 labels clear? [ ] Yes  [ ] Needs rewording
+  Notes: ____________________________________________
+
+----------------------------------------------------------------------
+Patient 4/4
+  Risk Score:     84.8 / 100
+  Risk Band:      High
+  Actual outcome: NO
+  --- Top-3 Risk Drivers ---
+  [1] Prior hospital admissions in the past year: 8 (frequent admissions signal ongoing clinical instability)
+  [2] Number of lab procedures during stay: 64 (more procedures often indicate higher diagnostic uncertainty or clinical severity)
+  [3] Decision path too shallow to extract additional driver. Retrain with greater max_depth to improve driver diversity.
+
+  REVIEWER: Were all 3 labels clear? [ ] Yes  [ ] Needs rewording
+  Notes: ____________________________________________
+
+----------------------------------------------------------------------
+
+======================================================================
+DRIVER DIVERSITY REPORT
+  Patients reviewed:               4
+  Unique Top-1 drivers:            1
+  Top-1 diversity score:           0.25 (1.0 = fully unique per patient)
+  Distinct features seen overall:  4
+  Features used: Decision path too shallow to extract additional driver. Retrain with greater max_depth to improve driver diversity., Length of hospital stay, Number of lab procedures during stay, Prior hospital admissions in the past year
+
+  If diversity score is below 0.4, retrain with greater max_depth
+  or increase DEPTH_WEIGHT_BASE above 2.5.
+======================================================================
+
+======================================================================
+GATE RESULT:
+[ ] PASS  -- All labels are clear to a non-technical reviewer
+[ ] FAIL  -- One or more labels need rewording (see notes above)
+
+If FAIL: update LABEL_MAP in models/driver_extractor.py,
+then re-run this script until all labels pass review.
+======================================================================

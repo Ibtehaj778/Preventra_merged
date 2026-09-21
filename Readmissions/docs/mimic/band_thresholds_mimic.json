@@ -1,0 +1,6 @@
+{
+  "high_score_threshold": 40.0,
+  "low_score_threshold": 20.0,
+  "source": "fixed product bands",
+  "note": "Low below 20%, Medium 20% to under 40%, High 40% and above. Set deliberately as round, explainable numbers rather than derived from the score distribution, so the band a patient is in means the same thing to everyone and does not move when the model is retrained."
+}

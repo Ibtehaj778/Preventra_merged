@@ -1,0 +1,4 @@
+patient_id,discharge_date,num_medications,ip_admissions_365d_prior,age_numeric,cci_score,time_in_hospital
+85299696,2026-04-23,24,3,72,4,9
+72671094,2026-04-23,15,1,58,2,4
+88003062,2026-04-23,8,0,45,1,2

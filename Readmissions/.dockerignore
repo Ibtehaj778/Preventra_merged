@@ -1,0 +1,32 @@
+# Build context trimming. The Dockerfile COPYs specific paths, so this only
+# controls how much is shipped to the builder - but on a free tier that is the
+# difference between a 1 MB context and a 50 GB one.
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+mlruns
+notebooks
+tests
+outputs
+pipeline
+ingestion
+features
+frontend
+scripts
+docs/deliverables
+
+# Datasets, training output and EDA figures. None of it is read at runtime.
+data/cms
+data/diabetic
+data/reference
+data/mimic/eda
+data/mimic/model/results/*.parquet
+data/runtime
+*.zip
+*.gz
+
+# Secrets never belong in an image layer.
+.env
+.env.bak.*

@@ -1,0 +1,47 @@
+[
+  {
+    "batch_date": "2026-04-22",
+    "total_patients": 47,
+    "high_count": 30,
+    "medium_count": 14,
+    "low_count": 3,
+    "pct_high": 63.83,
+    "wow_change": "N/A"
+  },
+  {
+    "batch_date": "2026-08-27",
+    "total_patients": 2000,
+    "high_count": 460,
+    "medium_count": 433,
+    "low_count": 1107,
+    "pct_high": 23.0,
+    "wow_change": "N/A"
+  },
+  {
+    "batch_date": "2026-08-31",
+    "total_patients": 2000,
+    "high_count": 460,
+    "medium_count": 433,
+    "low_count": 1107,
+    "pct_high": 23.0,
+    "wow_change": "N/A"
+  },
+  {
+    "batch_date": "2026-09-01",
+    "total_patients": 2000,
+    "high_count": 460,
+    "medium_count": 433,
+    "low_count": 1107,
+    "pct_high": 23.0,
+    "wow_change": "N/A"
+  },
+  {
+    "batch_date": "2026-09-08",
+    "total_patients": 4000,
+    "high_count": 660,
+    "medium_count": 582,
+    "low_count": 2758,
+    "pct_high": 16.5,
+    "wow_change": "N/A"
+  }
+]

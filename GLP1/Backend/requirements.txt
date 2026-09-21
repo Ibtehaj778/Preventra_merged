@@ -1,0 +1,28 @@
+# Runtime dependencies for the FastAPI backend ONLY.
+# Keep this file lean: it is what Vercel (and any other host) installs, and the
+# serverless bundle has a 500 MB ceiling. Anything used solely by notebooks,
+# the Mongo seeder, tests or the offline collectors belongs in
+# requirements-dev.txt.
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+pydantic==2.7.0
+pydantic-settings==2.3.0
+python-dotenv==1.0.0
+motor==3.5.0
+pymongo==4.8.0
+
+# numpy loads shap_values_test.npy; scikit-learn is required to unpickle
+# final_gb_model.pkl (GradientBoostingClassifier + StandardScaler).
+numpy==1.26.4
+scikit-learn==1.4.0
+
+# Chatbot (Google Gemini)
+google-genai>=0.3.0
+# --- Offline data collectors (Data_Collection/) ---
+requests==2.34.2
+openpyxl==3.1.5
+
+bcrypt==5.0.0
+python-jose[cryptography]==3.5.0
+email-validator==2.3.0
+pytest-asyncio==1.4.0

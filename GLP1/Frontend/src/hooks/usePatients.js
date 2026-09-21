@@ -1,0 +1,1 @@
+export { usePatients } from '../context/PatientsContext';

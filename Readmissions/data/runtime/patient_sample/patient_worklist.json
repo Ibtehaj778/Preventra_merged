@@ -1,0 +1,499 @@
+[
+  {
+    "patient_id": "MIMIC-10672726",
+    "batch_date": "2026-09-08",
+    "risk_score": 20.1,
+    "risk_band": "Medium",
+    "admit_date": "2015-09-16",
+    "discharge_date": "2015-09-18",
+    "los_days": 1.8,
+    "n_prior_adm": 0,
+    "driver_1": "Comorbidity burden (Charlson): 3 (higher scores mean more chronic conditions and higher risk)",
+    "driver_2": "Procedures during stay: 5 (invasive procedures complicate recovery)",
+    "driver_3": "Hours spent in emergency department: not recorded (prolonged ED time reflects acuity and crowding)",
+    "primary_diagnosis": "Subendocardial infarction, initial episode of care",
+    "primary_icd_code": "41071",
+    "secondary_diagnoses": [
+      "Other complications due to other cardiac device, implant, and graft",
+      "Right bundle branch block and left anterior fascicular block",
+      "Diabetes mellitus without mention of complication, type II or unspecified type, not stated as uncontrolled"
+    ],
+    "n_diagnoses_coded": 13,
+    "clinical_group": "diabetes",
+    "group_label": "Diabetes",
+    "group_evidence": "secondary diagnosis - Diabetes mellitus without mention of complication, type II or unspecified type, not stated as uncontrolled",
+    "group_confidence": "moderate",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "Medium",
+    "current_score": 39.3,
+    "discharge_score": 20.1,
+    "monitoring_status": "deteriorating",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": 19.2,
+    "weeks_tracked": 5,
+    "band_rank": 2,
+    "primary_driver_label": "Comorbidity burden (Charlson): 3 (higher scores mean more chronic conditions and higher risk)",
+    "status_rank": 3,
+    "clinical_groups": [
+      "diabetes",
+      "cardiac_other"
+    ],
+    "group_matches": [
+      {
+        "group": "diabetes",
+        "label": "Diabetes",
+        "confidence": "moderate",
+        "matched_on": "secondary_title",
+        "evidence": "secondary diagnosis - Diabetes mellitus without mention of complication, type II or unspecified type, not stated as uncontrolled"
+      },
+      {
+        "group": "cardiac_other",
+        "label": "Heart disease",
+        "confidence": "high",
+        "matched_on": "principal_code",
+        "evidence": "principal diagnosis 41071 - Subendocardial infarction, initial episode of care"
+      }
+    ]
+  },
+  {
+    "patient_id": "MIMIC-10758777",
+    "batch_date": "2026-09-08",
+    "risk_score": 45.4,
+    "risk_band": "High",
+    "admit_date": "2014-05-22",
+    "discharge_date": "2014-05-28",
+    "los_days": 5.6,
+    "n_prior_adm": 16,
+    "driver_1": "Blood urea nitrogen, last value before discharge: 120 (above the normal range of 7-20 mg/dL, indicating dehydration, renal impairment or heart failure)",
+    "driver_2": "Prior admissions on record: 16 (repeat admissions signal ongoing clinical instability)",
+    "driver_3": "Blood urea nitrogen, lowest value during stay: 103 (above the normal range of 7-20 mg/dL, indicating dehydration, renal impairment or heart failure)",
+    "primary_diagnosis": "Portal hypertension",
+    "primary_icd_code": "5723",
+    "secondary_diagnoses": [
+      "Acute kidney failure, unspecified",
+      "Other ascites",
+      "Polyneuropathy in diabetes"
+    ],
+    "n_diagnoses_coded": 18,
+    "clinical_group": "diabetes",
+    "group_label": "Diabetes",
+    "group_evidence": "secondary diagnosis - Polyneuropathy in diabetes",
+    "group_confidence": "moderate",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "High",
+    "current_score": 83.2,
+    "discharge_score": 45.4,
+    "monitoring_status": "deteriorating",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": 37.8,
+    "weeks_tracked": 5,
+    "band_rank": 3,
+    "primary_driver_label": "Blood urea nitrogen, lowest value during stay: 103 (above the normal range of 7-20 mg/dL, indicating dehydration, renal impairment or heart failure)",
+    "status_rank": 3,
+    "clinical_groups": [
+      "diabetes"
+    ],
+    "group_matches": [
+      {
+        "group": "diabetes",
+        "label": "Diabetes",
+        "confidence": "moderate",
+        "matched_on": "secondary_title",
+        "evidence": "secondary diagnosis - Polyneuropathy in diabetes"
+      }
+    ]
+  },
+  {
+    "patient_id": "MIMIC-11145160",
+    "batch_date": "2026-09-08",
+    "risk_score": 25.0,
+    "risk_band": "Medium",
+    "admit_date": "2015-11-05",
+    "discharge_date": "2015-11-20",
+    "los_days": 14.7,
+    "n_prior_adm": 0,
+    "driver_1": "Sodium, last value before discharge: 132 (below the normal range of 135-145 mEq/L, indicating hyponatremia, which reflects fluid overload and predicts instability)",
+    "driver_2": "Length of stay: 15 days (a long stay reflects greater illness severity and complex recovery)",
+    "driver_3": "Albumin, lowest value during stay: 3.7 (within the normal range of 3.5-5 g/dL; the model weighted this value in combination with the patient's other factors)",
+    "primary_diagnosis": "Stenosis of other cardiac prosthetic devices, implants and grafts, initial encounter",
+    "primary_icd_code": "T82857A",
+    "secondary_diagnoses": [
+      "Non-ST elevation (NSTEMI) myocardial infarction",
+      "Other pulmonary embolism without acute cor pulmonale",
+      "Acute kidney failure, unspecified"
+    ],
+    "n_diagnoses_coded": 34,
+    "clinical_group": "cardiac_other",
+    "group_label": "Heart disease",
+    "group_evidence": "secondary diagnosis - Non-ST elevation (NSTEMI) myocardial infarction",
+    "group_confidence": "moderate",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "Low",
+    "current_score": 18.9,
+    "discharge_score": 25.0,
+    "monitoring_status": "stable",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": -6.1,
+    "weeks_tracked": 5,
+    "band_rank": 1,
+    "primary_driver_label": "Sodium, last value before discharge: 132 (below the normal range of 135-145 mEq/L, indicating hyponatremia, which reflects fluid overload and predicts instability)",
+    "status_rank": 2,
+    "clinical_groups": [
+      "cardiac_other",
+      "surgical_injury"
+    ],
+    "group_matches": [
+      {
+        "group": "cardiac_other",
+        "label": "Heart disease",
+        "confidence": "moderate",
+        "matched_on": "secondary_title",
+        "evidence": "secondary diagnosis - Non-ST elevation (NSTEMI) myocardial infarction"
+      },
+      {
+        "group": "surgical_injury",
+        "label": "Surgery or injury recovery",
+        "confidence": "high",
+        "matched_on": "principal_code",
+        "evidence": "principal diagnosis T82857A - Stenosis of other cardiac prosthetic devices, implants and grafts, initial encounter"
+      }
+    ]
+  },
+  {
+    "patient_id": "MIMIC-12892273",
+    "batch_date": "2026-09-08",
+    "risk_score": 64.3,
+    "risk_band": "High",
+    "admit_date": "2009-11-17",
+    "discharge_date": "2009-12-02",
+    "los_days": 15.2,
+    "n_prior_adm": 5,
+    "driver_1": "Gap before this admission: 2 days (this admission began soon after the previous discharge, which indicates unresolved illness)",
+    "driver_2": "Platelet count, last value before discharge: 31 (below the normal range of 150-400 K/uL, indicating thrombocytopenia, which raises bleeding risk)",
+    "driver_3": "Malignancy: Yes (a Charlson comorbidity contributing to overall chronic disease burden)",
+    "primary_diagnosis": "Hypotension, unspecified",
+    "primary_icd_code": "4589",
+    "secondary_diagnoses": [
+      "Acute myeloid leukemia, without mention of having achieved remission",
+      "Chronic systolic heart failure",
+      "Other primary cardiomyopathies"
+    ],
+    "n_diagnoses_coded": 11,
+    "clinical_group": "heart_failure",
+    "group_label": "Heart failure",
+    "group_evidence": "secondary diagnosis - Chronic systolic heart failure",
+    "group_confidence": "moderate",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "High",
+    "current_score": 96.0,
+    "discharge_score": 64.3,
+    "monitoring_status": "deteriorating",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": 31.7,
+    "weeks_tracked": 5,
+    "band_rank": 3,
+    "primary_driver_label": "Gap before this admission: 2 days (this admission began soon after the previous discharge, which indicates unresolved illness)",
+    "status_rank": 3,
+    "clinical_groups": [
+      "heart_failure",
+      "oncology"
+    ],
+    "group_matches": [
+      {
+        "group": "heart_failure",
+        "label": "Heart failure",
+        "confidence": "moderate",
+        "matched_on": "secondary_title",
+        "evidence": "secondary diagnosis - Chronic systolic heart failure"
+      },
+      {
+        "group": "oncology",
+        "label": "Cancer",
+        "confidence": "moderate",
+        "matched_on": "secondary_title",
+        "evidence": "secondary diagnosis - Acute myeloid leukemia, without mention of having achieved remission"
+      }
+    ]
+  },
+  {
+    "patient_id": "MIMIC-15446497",
+    "batch_date": "2026-09-08",
+    "risk_score": 25.1,
+    "risk_band": "Medium",
+    "admit_date": "2015-08-24",
+    "discharge_date": "2015-08-29",
+    "los_days": 5.3,
+    "n_prior_adm": 2,
+    "driver_1": "Gap before this admission: 2 days (this admission began soon after the previous discharge, which indicates unresolved illness)",
+    "driver_2": "APR-DRG severity of illness: 3 (graded 1-4; higher values indicate a sicker admission)",
+    "driver_3": "Comorbidity burden (Charlson): 2 (higher scores mean more chronic conditions and higher risk)",
+    "primary_diagnosis": "Severe pre-eclampsia, delivered, with or without mention of antepartum condition",
+    "primary_icd_code": "64251",
+    "secondary_diagnoses": [
+      "Diabetes mellitus of mother, complicating pregnancy, childbirth, or the puerperium, delivered, with or without mention of antepartum condition",
+      "Infection of amniotic cavity, delivered, with or without mention of antepartum condition",
+      "Diabetes with ophthalmic manifestations, type I [juvenile type], uncontrolled"
+    ],
+    "n_diagnoses_coded": 10,
+    "clinical_group": "diabetes",
+    "group_label": "Diabetes",
+    "group_evidence": "secondary diagnosis - Diabetes mellitus of mother, complicating pregnancy, childbirth, or the puerperium, delivered, with or without mention of antepartum condition",
+    "group_confidence": "moderate",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "Low",
+    "current_score": 19.8,
+    "discharge_score": 25.1,
+    "monitoring_status": "stable",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": -5.3,
+    "weeks_tracked": 5,
+    "band_rank": 1,
+    "primary_driver_label": "APR-DRG severity of illness: 3 (graded 1-4; higher values indicate a sicker admission)",
+    "status_rank": 2,
+    "clinical_groups": [
+      "diabetes"
+    ],
+    "group_matches": [
+      {
+        "group": "diabetes",
+        "label": "Diabetes",
+        "confidence": "moderate",
+        "matched_on": "secondary_title",
+        "evidence": "secondary diagnosis - Diabetes mellitus of mother, complicating pregnancy, childbirth, or the puerperium, delivered, with or without mention of antepartum condition"
+      }
+    ]
+  },
+  {
+    "patient_id": "MIMIC-16466602",
+    "batch_date": "2026-09-08",
+    "risk_score": 34.1,
+    "risk_band": "Medium",
+    "admit_date": "2017-02-09",
+    "discharge_date": "2017-02-15",
+    "los_days": 6.7,
+    "n_prior_adm": 8,
+    "driver_1": "Gap before this admission: 7 days (this admission began soon after the previous discharge, which indicates unresolved illness)",
+    "driver_2": "Prior admissions on record: 8 (repeat admissions signal ongoing clinical instability)",
+    "driver_3": "Patient age: 29 (a younger patient carrying this much risk usually reflects chronic disease or frequent use of care rather than age itself)",
+    "primary_diagnosis": "Stenosis of other cardiac prosthetic devices, implants and grafts, initial encounter",
+    "primary_icd_code": "T82857A",
+    "secondary_diagnoses": [
+      "Acute posthemorrhagic anemia",
+      "Thoracic aortic aneurysm, without rupture",
+      "Hypotension, unspecified"
+    ],
+    "n_diagnoses_coded": 13,
+    "clinical_group": "cardiac_other",
+    "group_label": "Heart disease",
+    "group_evidence": "secondary diagnosis - Thoracic aortic aneurysm, without rupture",
+    "group_confidence": "moderate",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "High",
+    "current_score": 77.8,
+    "discharge_score": 34.1,
+    "monitoring_status": "deteriorating",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": 43.7,
+    "weeks_tracked": 5,
+    "band_rank": 3,
+    "primary_driver_label": "Patient age: 29 (a younger patient carrying this much risk usually reflects chronic disease or frequent use of care rather than age itself)",
+    "status_rank": 3,
+    "clinical_groups": [
+      "cardiac_other",
+      "surgical_injury"
+    ],
+    "group_matches": [
+      {
+        "group": "cardiac_other",
+        "label": "Heart disease",
+        "confidence": "moderate",
+        "matched_on": "secondary_title",
+        "evidence": "secondary diagnosis - Thoracic aortic aneurysm, without rupture"
+      },
+      {
+        "group": "surgical_injury",
+        "label": "Surgery or injury recovery",
+        "confidence": "high",
+        "matched_on": "principal_code",
+        "evidence": "principal diagnosis T82857A - Stenosis of other cardiac prosthetic devices, implants and grafts, initial encounter"
+      }
+    ]
+  },
+  {
+    "patient_id": "MIMIC-16548419",
+    "batch_date": "2026-09-08",
+    "risk_score": 25.1,
+    "risk_band": "Medium",
+    "admit_date": "2015-04-18",
+    "discharge_date": "2015-04-29",
+    "los_days": 11.7,
+    "n_prior_adm": 0,
+    "driver_1": "Length of stay: 12 days (a long stay reflects greater illness severity and complex recovery)",
+    "driver_2": "Discharged home: No (discharge home without support may leave needs unmet)",
+    "driver_3": "Albumin, lowest value during stay: 2.7 (below the normal range of 3.5-5 g/dL, indicating malnutrition and poor physiological reserve)",
+    "primary_diagnosis": "Intraspinal abscess",
+    "primary_icd_code": "3241",
+    "secondary_diagnoses": [
+      "Psoas muscle abscess",
+      "Acute kidney failure, unspecified",
+      "Mechanical complication due to other implant and internal device, not elsewhere classified"
+    ],
+    "n_diagnoses_coded": 21,
+    "clinical_group": "general",
+    "group_label": "General recovery",
+    "group_evidence": "no condition matched a specific monitoring group",
+    "group_confidence": "default",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "Low",
+    "current_score": 19.9,
+    "discharge_score": 25.1,
+    "monitoring_status": "stable",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": -5.2,
+    "weeks_tracked": 5,
+    "band_rank": 1,
+    "primary_driver_label": "Albumin, lowest value during stay: 2.7 (below the normal range of 3.5-5 g/dL, indicating malnutrition and poor physiological reserve)",
+    "status_rank": 2,
+    "clinical_groups": [
+      "general"
+    ],
+    "group_matches": []
+  },
+  {
+    "patient_id": "MIMIC-17170079",
+    "batch_date": "2026-09-08",
+    "risk_score": 9.3,
+    "risk_band": "Low",
+    "admit_date": "2015-09-19",
+    "discharge_date": "2015-09-20",
+    "los_days": 1.6,
+    "n_prior_adm": 0,
+    "driver_1": "Albumin, lowest value during stay: 3.7 (within the normal range of 3.5-5 g/dL; the model weighted this value in combination with the patient's other factors)",
+    "driver_2": "Blood glucose, lowest value during stay: 66 (below the normal range of 70-140 mg/dL, indicating hypoglycemia, a common cause of early return to hospital)",
+    "driver_3": "Blood glucose, last value before discharge: 66 (below the normal range of 70-140 mg/dL, indicating hypoglycemia, a common cause of early return to hospital)",
+    "primary_diagnosis": "Calculus of bile duct without cholangitis or cholecystitis with obstruction",
+    "primary_icd_code": "K8051",
+    "secondary_diagnoses": [
+      "Solitary pulmonary nodule",
+      "Personal history of tuberculosis"
+    ],
+    "n_diagnoses_coded": 3,
+    "clinical_group": "general",
+    "group_label": "General recovery",
+    "group_evidence": "no condition matched a specific monitoring group",
+    "group_confidence": "default",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "Medium",
+    "current_score": 39.7,
+    "discharge_score": 9.3,
+    "monitoring_status": "action_required",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": 30.4,
+    "weeks_tracked": 5,
+    "band_rank": 2,
+    "primary_driver_label": "Blood glucose, lowest value during stay: 66 (below the normal range of 70-140 mg/dL, indicating hypoglycemia, a common cause of early return to hospital)",
+    "status_rank": 4,
+    "clinical_groups": [
+      "general"
+    ],
+    "group_matches": []
+  },
+  {
+    "patient_id": "MIMIC-18284271",
+    "batch_date": "2026-09-08",
+    "risk_score": 64.3,
+    "risk_band": "High",
+    "admit_date": "2022-12-20",
+    "discharge_date": "2022-12-23",
+    "los_days": 2.9,
+    "n_prior_adm": 94,
+    "driver_1": "Prior admissions on record: 94 (repeat admissions signal ongoing clinical instability)",
+    "driver_2": "Gap before this admission: 19 days (this admission began soon after the previous discharge, which indicates unresolved illness)",
+    "driver_3": "Blood glucose, lowest value during stay: 67 (below the normal range of 70-140 mg/dL, indicating hypoglycemia, a common cause of early return to hospital)",
+    "primary_diagnosis": "Cellulitis of left lower limb",
+    "primary_icd_code": "L03116",
+    "secondary_diagnoses": [
+      "Acute kidney failure with tubular necrosis",
+      "Anaphylactic reaction due to adverse effect of correct drug or medicament properly administered, initial encounter",
+      "Atrioventricular block, complete"
+    ],
+    "n_diagnoses_coded": 33,
+    "clinical_group": "general",
+    "group_label": "General recovery",
+    "group_evidence": "no condition matched a specific monitoring group",
+    "group_confidence": "default",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "High",
+    "current_score": 94.0,
+    "discharge_score": 64.3,
+    "monitoring_status": "deteriorating",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": 29.7,
+    "weeks_tracked": 5,
+    "band_rank": 3,
+    "primary_driver_label": "Prior admissions on record: 94 (repeat admissions signal ongoing clinical instability)",
+    "status_rank": 3,
+    "clinical_groups": [
+      "general"
+    ],
+    "group_matches": []
+  },
+  {
+    "patient_id": "MIMIC-19014451",
+    "batch_date": "2026-09-08",
+    "risk_score": 20.1,
+    "risk_band": "Medium",
+    "admit_date": "2015-08-27",
+    "discharge_date": "2015-09-02",
+    "los_days": 6.7,
+    "n_prior_adm": 0,
+    "driver_1": "Sodium, last value before discharge: 134 (below the normal range of 135-145 mEq/L, indicating hyponatremia, which reflects fluid overload and predicts instability)",
+    "driver_2": "Albumin, lowest value during stay: 3.5 (within the normal range of 3.5-5 g/dL; the model weighted this value in combination with the patient's other factors)",
+    "driver_3": "Comorbidity burden (Charlson): 4 (higher scores mean more chronic conditions and higher risk)",
+    "primary_diagnosis": "Subendocardial infarction, initial episode of care",
+    "primary_icd_code": "41071",
+    "secondary_diagnoses": [
+      "Acute kidney failure, unspecified",
+      "Other primary cardiomyopathies",
+      "Delirium due to conditions classified elsewhere"
+    ],
+    "n_diagnoses_coded": 13,
+    "clinical_group": "cardiac_other",
+    "group_label": "Heart disease",
+    "group_evidence": "principal diagnosis 41071 - Subendocardial infarction, initial episode of care",
+    "group_confidence": "high",
+    "source": "mimic",
+    "raw_inputs": {},
+    "current_band": "Medium",
+    "current_score": 39.5,
+    "discharge_score": 20.1,
+    "monitoring_status": "action_required",
+    "summary_refreshed": "2026-09-10 08:17:16",
+    "trend_delta": 19.4,
+    "weeks_tracked": 5,
+    "band_rank": 2,
+    "primary_driver_label": "Albumin, lowest value during stay: 3.5 (within the normal range of 3.5-5 g/dL; the model weighted this value in combination with the patient's other factors)",
+    "status_rank": 4,
+    "clinical_groups": [
+      "cardiac_other"
+    ],
+    "group_matches": [
+      {
+        "group": "cardiac_other",
+        "label": "Heart disease",
+        "confidence": "high",
+        "matched_on": "principal_code",
+        "evidence": "principal diagnosis 41071 - Subendocardial infarction, initial episode of care"
+      }
+    ]
+  }
+]

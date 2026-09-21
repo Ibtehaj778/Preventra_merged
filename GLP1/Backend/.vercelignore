@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+.env
+scripts/
+GLP1_Backend_Integration_Plan.md

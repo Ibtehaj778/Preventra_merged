@@ -1,0 +1,35 @@
+# Runtime dependencies for the FastAPI service only.
+#
+# requirements.txt is a freeze of the whole development environment - MLflow,
+# Prefect, Jupyter, matplotlib, seaborn, XGBoost, Numba, Docker, Redis. None of
+# it is imported by api/, and installing it on a free-tier build is the
+# difference between a deploy that fits and one that runs out of disk.
+#
+# Derived by tracing every import reachable from api.main, including the four
+# models/ modules it uses (monitoring_rules, discharge_baseline, icd_groups,
+# mimic_drivers).
+
+fastapi==0.135.1
+uvicorn==0.42.0
+python-multipart==0.0.26       # UploadFile on /api/pipeline/upload
+python-dotenv==1.2.2
+
+pymongo==4.10.1                # also provides bson
+certifi==2026.2.25             # TLS roots for Atlas
+
+numpy==2.2.6
+pandas==2.3.3
+
+# Scoring. Imported lazily on the first /api/patients/predict call, not at
+# boot - the worklist and dashboard read precomputed scores from MongoDB and
+# never touch these.
+scikit-learn==1.7.2
+joblib==1.5.3
+shap==0.49.1
+
+google-genai==2.10.0           # /api/ai-insights, /api/week-narrative, /api/chatbot/query
+
+# Shared login (api/auth.py). bcrypt is pinned to the cost-12 scheme the
+# existing accounts in shared_identity.users were created with.
+bcrypt==4.2.1
+PyJWT==2.10.1

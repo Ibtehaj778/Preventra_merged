@@ -1,0 +1,5 @@
+cluster,segment,n,baseline_dropout_rate,new_dropout_rate,baseline_wasted_spend,intervention_cost,new_wasted_spend,waste_saved,net_saving
+0,Low Urgency Dropout Risk,1902,0.7923,0.6735,14250622.0,951000,12113028.0,2137593.0,1186593.0
+1,Financial Barrier Dropout Risk,2104,0.6915,0.5878,14702668.0,1052000,12497268.0,2205400.0,1153400.0
+2,Low Friction Strong Adherer,2383,0.1465,0.1245,5564215.0,1191500,4729583.0,834632.0,-356868.0
+3,Moderate Risk Moderate Adherer,1177,0.5939,0.5048,5452358.0,588500,4634505.0,817854.0,229354.0

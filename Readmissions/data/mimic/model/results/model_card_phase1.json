@@ -1,0 +1,25 @@
+{
+  "architecture": "HistGradientBoostingClassifier + isotonic calibration",
+  "dataset": "MIMIC-IV hosp",
+  "trained_at": "2026-09-01",
+  "cohort": {
+    "index_stays": 296760,
+    "patients": 148669,
+    "exclusions": "in-hospital death, hospice discharge, observation stays",
+    "label": "30-day unplanned readmission (elective returns excluded)"
+  },
+  "prevalence": 0.1963,
+  "metrics": {
+    "auc_roc": 0.7229,
+    "auc_pr": 0.3921,
+    "brier": 0.1404,
+    "threshold": 0.2243,
+    "precision_readmit": 0.3421,
+    "recall_readmit": 0.6008
+  },
+  "notes": [
+    "Probabilities are calibrated; score may be read as a real probability.",
+    "Split by patient (GroupShuffleSplit) - no subject appears in two folds.",
+    "Single-centre data: readmissions to other hospitals are not observed, so the true rate is higher than measured."
+  ]
+}

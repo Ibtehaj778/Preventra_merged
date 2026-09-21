@@ -1,0 +1,6 @@
+patient_id,discharge_date,num_medications,ip_admissions_365d_prior,age_numeric,cci_score,time_in_hospital
+234567,2026-04-14,14,2,65,3,4
+876543,2026-04-14,22,1,72,4,7
+987654,2026-04-15,8,0,55,1,2
+345678,2026-04-15,31,4,82,6,12
+567890,2026-04-16,11,0,45,0,1

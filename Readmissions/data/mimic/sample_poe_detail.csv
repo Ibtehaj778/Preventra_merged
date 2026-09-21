@@ -1,0 +1,101 @@
+poe_id,poe_seq,subject_id,field_name,field_value
+10018081-1144,1144,10018081,Admit category,Admit to inpatient
+10020306-163,163,10020306,Admit category,Place in observation
+10020740-989,989,10020740,Admit category,Admit to inpatient
+10003400-892,892,10003400,Transfer to,ICU
+10012853-370,370,10012853,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10020786-130,130,10020786,Admit category,Admit to inpatient
+10021938-121,121,10021938,Discharge Planning,Finalized
+10018081-821,821,10018081,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10039997-26,26,10039997,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10019385-128,128,10019385,Admit to,Surgery
+10005817-115,115,10005817,Tubes & Drains type,Chest tube
+10015272-152,152,10015272,Admit category,Admit to inpatient
+10007795-700,700,10007795,Discharge Planning,Finalized
+10019003-211,211,10019003,Admit to,ICU
+10020740-357,357,10020740,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10018423-291,291,10018423,Admit category,Admit to inpatient
+10020740-489,489,10020740,Admit category,Admit to inpatient
+10032725-290,290,10032725,Admit category,Admit to inpatient
+10003400-1232,1232,10003400,Admit to,Surgery
+10003400-2078,2078,10003400,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10006053-50,50,10006053,Code status,Do not resuscitate (DNR/DNI)
+10004235-648,648,10004235,Admit category,Admit to inpatient
+10010867-441,441,10010867,Transfer to,Surgery
+10003400-287,287,10003400,Admit to,Medicine
+10009035-14,14,10009035,Admit to,Surgery
+10018081-1519,1519,10018081,Discharge When,Discharge Now
+10038081-346,346,10038081,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10018081-1143,1143,10018081,Discharge Planning,Finalized
+10005866-81,81,10005866,Admit category,Admit to inpatient
+10037928-802,802,10037928,Discharge Planning,Finalized
+10003400-598,598,10003400,Admit category,Place in observation
+10004457-271,271,10004457,Transfer to,Surgery
+10015860-351,351,10015860,Admit to,Surgery
+10023117-345,345,10023117,Transfer to,Medicine
+10015931-328,328,10015931,Transfer to,Cardiology NP
+10019003-978,978,10019003,Discharge Planning,Finalized
+10015860-741,741,10015860,Discharge When,Discharge Now
+10004422-72,72,10004422,Code status,Resuscitate (Full code)
+10024043-67,67,10024043,Admit category,Admit to inpatient
+10019003-505,505,10019003,Transfer to,ICU
+10020786-131,131,10020786,Discharge When,Discharge Now
+10003046-23,23,10003046,Tubes & Drains type,Closed suction drain
+10009049-130,130,10009049,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10005866-1232,1232,10005866,Code status,DNAR (DO NOT attempt resuscitation for cardiac arrest) 
+10026255-608,608,10026255,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10023117-279,279,10023117,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10021487-493,493,10021487,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10005817-583,583,10005817,Admit category,Admit to inpatient
+10037975-159,159,10037975,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10014354-1765,1765,10014354,Code status,Full code  (attempt resuscitation)
+10015860-1039,1039,10015860,Admit to,MICU - Red
+10002930-418,418,10002930,Admit to,ED - Observation
+10002428-192,192,10002428,Admit category,Admit to inpatient
+10019003-1042,1042,10019003,Indication,Blood products- Red cells
+10009628-71,71,10009628,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10002930-127,127,10002930,Transfer to,Medicine
+10014354-3285,3285,10014354,Admit category,Admit to inpatient
+10001217-116,116,10001217,Transfer to,Surgery
+10001725-70,70,10001725,Transfer to,ICU
+10037861-72,72,10037861,Admit to,Medicine
+10010471-54,54,10010471,Admit to,Medicine
+10040025-1656,1656,10040025,Tubes & Drains type,"Fecal Management System, Flexiseal"
+10022017-87,87,10022017,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10019385-358,358,10019385,Admit category,Admit to inpatient
+10022281-97,97,10022281,Transfer to,Surgery
+10018423-216,216,10018423,Tubes & Drains type,Chest tube
+10035631-318,318,10035631,Admit category,Admit to inpatient
+10014354-2047,2047,10014354,Code status,Full code  (attempt resuscitation)
+10015272-12,12,10015272,Admit to,ICU
+10040025-602,602,10040025,Admit category,Admit to inpatient
+10004457-179,179,10004457,Discharge Planning,Finalized
+10010867-603,603,10010867,Discharge When,Discharge Now
+10037928-839,839,10037928,Admit category,Place in observation
+10029291-216,216,10029291,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10015931-412,412,10015931,Admit category,Admit to inpatient
+10013049-117,117,10013049,Discharge When,Discharge Now
+10023117-728,728,10023117,Discharge Planning,Finalized
+10012853-162,162,10012853,Discharge Planning,Finalized
+10020740-13,13,10020740,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10019003-1246,1246,10019003,Admit category,Admit to inpatient
+10004733-292,292,10004733,Admit to,Neuromed
+10006053-5,5,10006053,Admit category,Admit to inpatient
+10014354-3238,3238,10014354,Admit to,Medicine
+10018081-447,447,10018081,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10027445-277,277,10027445,Admit category,Admit to inpatient
+10024043-260,260,10024043,Code status,Resuscitate (Full code)
+10020740-1076,1076,10020740,Discharge When,Discharge Now
+10040025-616,616,10040025,Admit category,Admit to inpatient
+10018328-81,81,10018328,Transfer to,Medicine
+10025463-89,89,10025463,Admit category,Admit to inpatient
+10040025-1482,1482,10040025,Tubes & Drains type,Indwelling urinary catheter (IUC) - Foley
+10010867-546,546,10010867,Admit category,Admit to inpatient
+10014729-518,518,10014729,Admit category,Admit to inpatient
+10019777-57,57,10019777,Admit category,Admit to inpatient
+10014354-2161,2161,10014354,Admit to,Medicine
+10035631-1143,1143,10035631,Indication,Chemo
+10020740-536,536,10020740,Admit category,Admit to inpatient
+10014354-361,361,10014354,Admit to,Medicine
+10023117-559,559,10023117,Discharge When,Discharge Now
+10002930-44,44,10002930,Discharge When,Discharge Now

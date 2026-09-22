@@ -24,41 +24,22 @@
   secret and must never be given one.
 -->
 
+  <!-- Per-environment configuration. Loaded before the app script below, which
+       reads window.__PORTAL_CONFIG__ and falls back to the defaults in it when
+       this file is absent. -->
+  <script src="config.js"></script>
   <script>
-    // ─────────────────────────────────────────────────────────────────────────────
-    // CONFIGURE THESE THREE THINGS
-    // ─────────────────────────────────────────────────────────────────────────────
-    const CONFIG = {
-      // Base URL of the auth service. No trailing slash.
-      // This portal's origin must be in ALLOWED_ORIGINS on that service, or the
-      // browser blocks the sign-in call and it looks like the service is down.
-      // Local: http://localhost:8000
-      AUTH_BASE_URL: 'https://preventra-cms-mimic-production.up.railway.app',
-
-      // The apps this portal can send people into. The `key` MUST match the string
-      // the auth service puts in the token's `app_access` list.
+    // Defaults, used only when config.js is missing or incomplete. Edit
+    // config.js for a real deployment - not this block.
+    const FALLBACK_CONFIG = {
+      AUTH_BASE_URL: 'http://localhost:8001',
       APPS: [
-        {
-          key: 'glp1',
-          name: 'GLP-1 Analytics',
-          blurb: 'Treatment response, adherence and payer return on investment.',
-          // FILL IN: the deployed GLP-1 frontend origin, e.g. https://glp1-xyz.vercel.app
-          // Origin only - no path, no trailing slash. Leave blank and the tile
-          // reports itself as not configured instead of navigating nowhere.
-          url: 'https://glp-1-adherence.vercel.app/',
-          handoff: 'fragment',        // 'fragment' -> #token=...   'query' -> ?token=...
-        },
-        {
-          key: 'readmissions',
-          name: 'Readmission Risk',
-          blurb: 'Discharge risk scoring, weekly monitoring and the clinician console.',
-          // FILL IN: your deployed Readmissions frontend origin.
-          url: 'https://preventra-cms-mimic.vercel.app/',
-          handoff: 'fragment',
-        },
+        { key: 'glp1',         name: 'GLP-1 Analytics',  blurb: 'Treatment response, adherence and payer return on investment.',     url: '', handoff: 'fragment' },
+        { key: 'readmissions', name: 'Readmission Risk', blurb: 'Discharge risk scoring, weekly monitoring and the clinician console.', url: '', handoff: 'fragment' },
       ],
     };
-    // ─────────────────────────────────────────────────────────────────────────────
+
+    const CONFIG = Object.assign({}, FALLBACK_CONFIG, window.__PORTAL_CONFIG__ || {});
   </script>
 
   <style>

@@ -73,3 +73,7 @@ ehthumbs.db
 build/
 .vercel
 .env*
+# ...except the templates, which carry no values and are the documentation for
+# what each service needs.
+!.env.example
+!**/.env.example

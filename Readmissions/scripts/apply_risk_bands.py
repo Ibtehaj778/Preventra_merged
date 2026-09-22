@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 from pymongo import UpdateOne
 
-from api.db_utils import get_mongo_client
+from api.db_utils import get_db_name, get_mongo_client
 
 THRESHOLDS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "docs", "band_thresholds_mimic.json")
@@ -56,7 +56,7 @@ def main() -> None:
     low, high = float(t["low_score_threshold"]), float(t["high_score_threshold"])
     print(f"  Low < {low}%   Medium {low}-{high}%   High >= {high}%\n")
 
-    db = get_mongo_client(os.environ.get("MONGO_URI", "mongodb://localhost:27017"))["neuroshield"]
+    db = get_mongo_client(os.environ.get("MONGO_URI", "mongodb://localhost:27017"))[get_db_name()]
 
     for coll, score_field, band_field in TARGETS:
         rows = list(db[coll].find({score_field: {"$exists": True, "$ne": None}},

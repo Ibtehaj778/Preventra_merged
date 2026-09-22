@@ -14,14 +14,14 @@ from prefect import flow, task, get_run_logger
 # Ensure root paths are in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from api.db_utils import get_mongo_client
+from api.db_utils import get_db_name, get_mongo_client
 
 # ---------------------------------------------------------------------------
 # MongoDB connection
 # ---------------------------------------------------------------------------
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
 _mongo_client = get_mongo_client(MONGO_URI)
-_db = _mongo_client["neuroshield"]
+_db = _mongo_client[get_db_name()]
 
 from features.clean import load_and_clean
 from features.label import add_balanced_label_with_importance

@@ -176,7 +176,12 @@ MONGODB_URI=mongodb+srv://your_user:URL_ENCODED_PWD@cluster0.xxxxx.mongodb.net/?
 MONGODB_DB_NAME=glp1_analytics
 DATA_DIR=./data
 CORS_ORIGINS=["http://localhost:5173","http://localhost:4173"]
-SECRET_KEY=<run: python -c "import secrets; print(secrets.token_hex(32))">
+# The HS256 secret used to VERIFY tokens. This service does not issue them -
+# the Readmissions API is the single issuer for both products - so this value
+# must be byte-identical to SHARED_SECRET_KEY on that service, or every
+# protected route answers 401.
+SHARED_SECRET_KEY=<the same value set on the Readmissions API>
+SHARED_IDENTITY_DB_NAME=shared_identity
 ```
 
 ### 4. Confirm pipeline artifacts are present
@@ -237,8 +242,13 @@ npm run dev
 
 Optional `Frontend/.env`:
 ```env
-VITE_API_URL=http://localhost:8000     # default; override if backend is elsewhere
+VITE_API_URL=http://localhost:8000     # this backend; override if it is elsewhere
+VITE_AUTH_URL=http://localhost:8001    # the Readmissions API — the single token issuer
+VITE_READMISSIONS_URL=http://localhost:5174   # where the sidebar app switcher sends people
 ```
+
+`VITE_AUTH_URL` is deliberately a different origin from `VITE_API_URL`: sign-in
+and sign-up go to the shared auth service, everything else to this backend.
 
 Frontend hooks fall back to `src/data/mockData.js` if any API call fails, so the UI stays usable during backend outages.
 

@@ -274,7 +274,7 @@ def main():
     print(f"  bands     : High>={thresholds['high']}%  Medium>={thresholds['low']}%")
 
     load_dotenv()
-    from api.db_utils import get_mongo_client
+    from api.db_utils import get_db_name, get_mongo_client
     uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
 
     # Atlas intermittently fails the TLS handshake on a single shard node and
@@ -294,7 +294,7 @@ def main():
                       f"- {str(exc)[:70]}")
                 time.sleep(wait)
 
-    db = get_mongo_client(uri)["neuroshield"]
+    db = get_mongo_client(uri)[get_db_name()]
     wl = _with_retry(lambda: list(db["patient_worklist"].find(
         {"source": "mimic"},
         {"_id": 0, "patient_id": 1, "discharge_date": 1, "primary_diagnosis": 1,

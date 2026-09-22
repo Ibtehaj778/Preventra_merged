@@ -21,7 +21,7 @@ from pymongo import MongoClient, ASCENDING, DESCENDING
 from pymongo.errors import AutoReconnect, ServerSelectionTimeoutError
 
 from api import doctor_service
-from api.db_utils import get_latest_batch_date, get_mongo_client
+from api.db_utils import get_db_name, get_latest_batch_date, get_mongo_client
 from api import auth as shared_auth
 from api.chatbot_service import answer_question
 from api.chatbot_queries import _patient_id_filter
@@ -207,7 +207,7 @@ INPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "input")
 # ---------------------------------------------------------------------------
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
 _mongo_client = get_mongo_client(MONGO_URI)
-db = _mongo_client["neuroshield"]
+db = _mongo_client[get_db_name()]
 
 # Email is the account key for the shared login; the unique index that enforces
 # that lives on a different database on the same cluster, so it is created here

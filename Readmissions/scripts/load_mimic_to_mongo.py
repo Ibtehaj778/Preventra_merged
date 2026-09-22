@@ -212,8 +212,8 @@ def main():
         existing = set()
         if a.preserve_existing:
             load_dotenv()
-            from api.db_utils import get_mongo_client
-            _db = get_mongo_client(os.environ.get("MONGO_URI", "mongodb://localhost:27017"))["neuroshield"]
+            from api.db_utils import get_db_name, get_mongo_client
+            _db = get_mongo_client(os.environ.get("MONGO_URI", "mongodb://localhost:27017"))[get_db_name()]
             existing = {int(str(d["patient_id"]).replace("MIMIC-", ""))
                         for d in _db["patient_worklist"].find(
                             {"source": "mimic"}, {"_id": 0, "patient_id": 1})
@@ -365,9 +365,9 @@ def main():
 
     # --- write ------------------------------------------------------------
     load_dotenv()
-    from api.db_utils import get_mongo_client
+    from api.db_utils import get_db_name, get_mongo_client
     uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-    db = get_mongo_client(uri)["neuroshield"]
+    db = get_mongo_client(uri)[get_db_name()]
 
     print("\nwriting to MongoDB ...")
     db["patient_worklist"].delete_many({"source": "mimic"})

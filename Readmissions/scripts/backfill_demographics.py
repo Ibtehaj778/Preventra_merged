@@ -40,7 +40,7 @@ load_dotenv(os.path.join(ROOT, ".env"))
 
 from pymongo import UpdateOne  # noqa: E402
 
-from api.db_utils import get_mongo_client  # noqa: E402
+from api.db_utils import get_db_name, get_mongo_client  # noqa: E402
 
 MATRIX = os.path.join(ROOT, "data", "mimic", "model", "results", "phase1_matrix.parquet")
 # Age above 89 is recorded as 91 for de-identification, so the top of the
@@ -54,7 +54,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    db = get_mongo_client(os.environ["MONGO_URI"])["neuroshield"]
+    db = get_mongo_client(os.environ["MONGO_URI"])[get_db_name()]
     worklist = db["patient_worklist"]
 
     demo = (pd.read_parquet(MATRIX, columns=["subject_id", "anchor_age", "gender"])

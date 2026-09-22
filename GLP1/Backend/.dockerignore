@@ -1,0 +1,13 @@
+# Seeder input, not runtime input. The Dockerfile copies the two binary
+# artifacts it needs by name; the CSVs are read only by
+# scripts/migrate_csv_to_mongo.py, which runs from a workstation.
+data/*.csv
+data/.gitkeep
+
+scripts/
+tests/
+pytest.ini
+requirements-dev.txt
+*.md
+
+__pycache__/

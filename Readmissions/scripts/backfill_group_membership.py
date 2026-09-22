@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 from pymongo import UpdateOne
 
-from api.db_utils import get_mongo_client
+from api.db_utils import get_db_name, get_mongo_client
 from models.icd_groups import classify, classify_all
 
 BATCH = 1000
@@ -39,7 +39,7 @@ BATCH = 1000
 
 def main() -> None:
     load_dotenv()
-    db = get_mongo_client(os.environ.get("MONGO_URI", "mongodb://localhost:27017"))["neuroshield"]
+    db = get_mongo_client(os.environ.get("MONGO_URI", "mongodb://localhost:27017"))[get_db_name()]
     col = db["patient_worklist"]
 
     rows = list(col.find({}, {"_id": 1, "primary_icd_code": 1, "primary_diagnosis": 1,

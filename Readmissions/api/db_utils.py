@@ -1,5 +1,15 @@
+import os
+
 import certifi
 from pymongo import MongoClient, DESCENDING
+
+
+def get_db_name() -> str:
+    """The product database. Lives here rather than as a literal in each entry
+    point: the API and the loader scripts must agree, and a name set for one but
+    not the others means the dashboard reads an empty database and says nothing
+    about why."""
+    return os.environ.get("MONGO_DB", "neuroshield")
 
 
 def get_mongo_client(uri: str) -> MongoClient:

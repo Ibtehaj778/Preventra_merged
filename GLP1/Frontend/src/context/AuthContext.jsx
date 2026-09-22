@@ -71,8 +71,16 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
-  const register = useCallback(async (email, password) => {
-    const data = await api.register({ email, password });
+  // The auth service requires a role and an organisation at signup - they go
+  // into the account and into the token's claims, so they cannot be defaulted
+  // here without silently mislabelling every account created from this screen.
+  const register = useCallback(async (email, password, role, orgName) => {
+    const data = await api.signup({
+      email,
+      password,
+      role,
+      org_name: orgName ?? '',
+    });
     _persist(data.access_token, data.user);
     return data;
   }, []);

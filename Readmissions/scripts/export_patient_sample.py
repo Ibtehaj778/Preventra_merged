@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 from dotenv import load_dotenv
 
-from api.db_utils import get_mongo_client
+from api.db_utils import get_db_name, get_mongo_client
 
 # collection -> the field holding the patient id
 PATIENT_COLLECTIONS = {
@@ -109,7 +109,7 @@ def main() -> None:
     a = ap.parse_args()
 
     load_dotenv()
-    db = get_mongo_client(os.environ.get("MONGO_URI", "mongodb://localhost:27017"))["neuroshield"]
+    db = get_mongo_client(os.environ.get("MONGO_URI", "mongodb://localhost:27017"))[get_db_name()]
 
     picked = pick_patients(db, a.n)
     ids = [p["patient_id"] for p in picked]

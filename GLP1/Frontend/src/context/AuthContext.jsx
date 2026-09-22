@@ -106,15 +106,24 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    if (PORTAL_URL) {
+      // Back to the shared sign-in page. `#signout` tells the portal to drop
+      // its own copy of the session too - it keeps a separate one per tab, and
+      // arriving at the tile screen still signed in is not signing out.
+      //
+      // Navigate WITHOUT clearing React state first. Clearing it re-renders
+      // RootRoutes, whose own "no session" redirect goes to the plain portal
+      // URL and wins the race, dropping the marker. The page is leaving anyway;
+      // there is nothing left to re-render. replace() so Back does not return
+      // to a screen whose token is already gone.
+      window.location.replace(`${PORTAL_URL}/#signout=1`);
+      return;
+    }
+
+    // No portal configured (local development): fall through to this app's own
+    // /login, which RootRoutes shows once there is no session.
     setToken(null);
     setUser(null);
-    // Back to the shared sign-in page, and deliberately without a token on the
-    // URL - arriving at the portal still signed in is not signing out. Falls
-    // through to this app's own /login when no portal is configured.
-    // `#signout` tells the portal to drop its own copy of the session too; it
-    // keeps a separate one per tab, and a tile screen right after signing out
-    // reads as the sign-out having done nothing.
-    if (PORTAL_URL) window.location.href = `${PORTAL_URL}/#signout=1`;
   }, []);
 
   return (

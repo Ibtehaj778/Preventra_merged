@@ -13,7 +13,6 @@ import { getToken, readClaims, signOut } from '../api/auth';
 // backends check the signature themselves and will refuse a token that was not
 // issued for them. Hiding a tile is a courtesy, not a control.
 const GLP1_URL = (import.meta.env.VITE_GLP1_URL || '').replace(/\/$/, '');
-const PORTAL_URL = (import.meta.env.VITE_PORTAL_URL || '').replace(/\/$/, '');
 
 export default function AppSwitcher({ onNavigate = () => {} }) {
   const token = getToken();
@@ -25,7 +24,7 @@ export default function AppSwitcher({ onNavigate = () => {} }) {
 
   const granted = Array.isArray(claims.app_access) ? claims.app_access : [];
   const hasGlp1 = granted.includes('glp1');
-  if (!hasGlp1 && !PORTAL_URL) return null;
+  if (!hasGlp1) return null;
 
   const go = (base) => {
     onNavigate();
@@ -64,26 +63,12 @@ export default function AppSwitcher({ onNavigate = () => {} }) {
         </button>
       )}
 
-      {PORTAL_URL && (
-        <button
-          type="button"
-          onClick={() => go(PORTAL_URL)}
-          className="mt-2 w-full rounded-md px-3 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
-        >
-          Back to portal
-        </button>
-      )}
-
       {claims.email && (
         <div className="mt-3 truncate text-xs text-gray-400" title={claims.email}>
           {claims.email}
         </div>
       )}
 
-      {/* Signing out drops the token and returns to the portal WITHOUT it -
-          unlike "Back to portal" above, which carries the session across so you
-          are not asked to sign in again. Two different intentions, two
-          different destinations. */}
       <button
         type="button"
         onClick={signOut}

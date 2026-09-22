@@ -540,10 +540,21 @@
 
     // ── on load ──────────────────────────────────────────────────────────────────
     (function start() {
+      const fragment = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+
+      // Arrived here from an app's Sign out. The app has dropped its own token,
+      // but this portal keeps a separate one per tab - and landing on a tile
+      // screen straight after signing out looks exactly like the sign-out
+      // failing. Drop it and show the login form.
+      if (fragment.get('signout')) {
+        window.history.replaceState(null, '', window.location.pathname);
+        store.del(TOKEN_KEY);
+        return signOut();
+      }
+
       // A token pasted on the URL wins. Lets the portal be exercised end to end with
       // scripts/mint_test_token.py before the auth service is reachable.
-      const fromUrl = new URLSearchParams(
-        (window.location.hash || '').replace(/^#/, '')).get('token');
+      const fromUrl = fragment.get('token');
       if (fromUrl) {
         window.history.replaceState(null, '', window.location.pathname);
         return signIn(fromUrl);

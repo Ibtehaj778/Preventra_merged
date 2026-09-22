@@ -245,6 +245,7 @@ Optional `Frontend/.env`:
 VITE_API_URL=http://localhost:8000     # this backend; override if it is elsewhere
 VITE_AUTH_URL=http://localhost:8001    # the Readmissions API — the single token issuer
 VITE_READMISSIONS_URL=http://localhost:5174   # where the sidebar app switcher sends people
+VITE_PORTAL_URL=http://localhost:5175         # shared sign-in; sign-out returns here
 ```
 
 `VITE_AUTH_URL` is deliberately a different origin from `VITE_API_URL`: sign-in

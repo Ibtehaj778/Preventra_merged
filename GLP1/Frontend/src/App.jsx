@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider, useAuth, PORTAL_URL } from './context/AuthContext';
 import { RoleProvider } from './context/RoleContext';
 import { PatientsProvider } from './context/PatientsContext';
 import AppShell from './components/layout/AppShell';
@@ -49,6 +49,15 @@ function AuthenticatedApp() {
 
 function RootRoutes() {
   const { isAuthenticated } = useAuth();
+
+  // With a portal configured, it owns sign-in and sign-up for both products —
+  // this app's own /login exists only as the local-development fallback. Sending
+  // people there instead would be a second account screen that signs them into
+  // the same shared identity, which is the duplication the portal replaced.
+  if (!isAuthenticated && PORTAL_URL) {
+    window.location.replace(PORTAL_URL);
+    return null;
+  }
 
   return (
     <Routes>

@@ -11,6 +11,12 @@
 
 const STORAGE_KEY = 'shared_auth_token';
 
+// The portal is the sign-in surface for both products. When it is configured,
+// this app has somewhere to send people who are not signed in - and somewhere
+// to send them back to on the way out. Without it (local development against a
+// bare dashboard) the app behaves as it always did.
+const PORTAL_URL = (import.meta.env.VITE_PORTAL_URL || '').replace(/\/$/, '');
+
 // sessionStorage, not localStorage: the token dies with the tab. A demo laptop
 // left open does not stay signed in, and there is no sign-out flow yet to undo
 // it if it did.
@@ -56,6 +62,52 @@ export function getToken() {
 
 export function clearToken() {
   store()?.removeItem(STORAGE_KEY);
+}
+
+/** Has this token passed its expiry? A token the backend will refuse is not a
+ *  session, and treating it as one is what produces a dashboard that renders
+ *  and then 401s on every request. */
+function isExpired(claims) {
+  const exp = claims?.exp;
+  return typeof exp === 'number' && exp * 1000 <= Date.now();
+}
+
+/**
+ * Sign out: drop the token and go back to the portal.
+ *
+ * Deliberately NOT the app-switcher hand-off - no `#token=` on the URL. The
+ * point of signing out is to arrive at the portal without a session.
+ *
+ * With no portal configured there is nowhere to go, so reload instead: the
+ * token is gone either way, and the reload makes that visible rather than
+ * leaving a dashboard on screen that looks signed in.
+ */
+export function signOut() {
+  clearToken();
+  // `#signout` tells the portal to drop its own copy of the session. It keeps a
+  // separate one per tab, so without this you land on the tile screen still
+  // signed in - which reads as the sign-out having done nothing.
+  window.location.href = PORTAL_URL ? `${PORTAL_URL}/#signout=1` : window.location.pathname;
+}
+
+/**
+ * Called once before the app renders. Sends anyone without a usable session to
+ * the portal, and returns true when it has done so, so the caller can skip
+ * rendering a screen that is about to be navigated away from.
+ *
+ * This is a routing convenience, not a security control. The data is protected
+ * by the API key and, on the protected routes, by the token signature the
+ * backend checks - never by whether this function ran.
+ */
+export function requireSession() {
+  if (!PORTAL_URL) return false;          // nowhere to send anyone; carry on
+
+  const claims = readClaims();
+  if (claims && !isExpired(claims)) return false;
+
+  clearToken();                            // expired tokens do not linger
+  window.location.replace(PORTAL_URL);     // replace: Back must not return here
+  return true;
 }
 
 /**

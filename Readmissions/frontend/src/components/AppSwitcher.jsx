@@ -1,6 +1,6 @@
 import React from 'react';
-import { ArrowLeftRight, ExternalLink, LayoutGrid } from 'lucide-react';
-import { getToken, readClaims } from '../api/auth';
+import { ArrowLeftRight, ExternalLink, LayoutGrid, LogOut } from 'lucide-react';
+import { getToken, readClaims, signOut } from '../api/auth';
 
 // Moving between the two products without signing in again.
 //
@@ -79,6 +79,19 @@ export default function AppSwitcher({ onNavigate = () => {} }) {
           {claims.email}
         </div>
       )}
+
+      {/* Signing out drops the token and returns to the portal WITHOUT it -
+          unlike "Back to portal" above, which carries the session across so you
+          are not asked to sign in again. Two different intentions, two
+          different destinations. */}
+      <button
+        type="button"
+        onClick={signOut}
+        className="mt-2 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+      >
+        <LogOut size={16} />
+        Sign out
+      </button>
     </div>
   );
 }

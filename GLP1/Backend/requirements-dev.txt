@@ -7,9 +7,8 @@
 pandas==2.2.0
 lifelines==0.29.0
 
-# --- Tests (Model/consequence/tests/, Backend/tests/) ---
+# --- Tests (Model/consequence/tests/) ---
 pytest==9.1.0
-pytest-asyncio==1.4.0
 
 # --- Notebooks (Model/model.ipynb, Processing/cleanup.ipynb) ---
 shap==0.45.0

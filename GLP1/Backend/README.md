@@ -41,12 +41,7 @@ MONGODB_URI=<your Atlas URI or mongodb://localhost:27017>
 MONGODB_DB_NAME=glp1_analytics
 DATA_DIR=./data
 CORS_ORIGINS=["http://localhost:5173","http://localhost:4173"]
-# The HS256 secret used to VERIFY tokens. This service does not issue them -
-# the Readmissions API is the single issuer for both products - so this value
-# must be byte-identical to SHARED_SECRET_KEY on that service, or every
-# protected route answers 401.
-SHARED_SECRET_KEY=<the same value set on the Readmissions API>
-SHARED_IDENTITY_DB_NAME=shared_identity
+SECRET_KEY=<run: python -c "import secrets; print(secrets.token_hex(32))">
 
 # Chatbot (optional — leave GOOGLE_API_KEY empty to disable the widget's live replies)
 GOOGLE_API_KEY=<get a free key at https://aistudio.google.com/app/apikey>

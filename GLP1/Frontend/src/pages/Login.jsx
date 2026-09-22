@@ -2,16 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-// Mirrors the roles the shared auth service accepts. Every role currently
-// grants both products; the field exists because the account carries it.
-const ROLES = ['Doctor', 'Nurse', 'Hospital', 'Pharmacy', 'Insurance', 'Patient'];
-
 export default function Login() {
   const [mode, setMode]         = useState('login'); // 'login' | 'register'
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole]         = useState(ROLES[0]);
-  const [orgName, setOrgName]   = useState('');
   const [error, setError]       = useState(null);
   const [loading, setLoading]   = useState(false);
 
@@ -26,16 +20,15 @@ export default function Login() {
       if (mode === 'login') {
         await login(email, password);
       } else {
-        await register(email, password, role, orgName);
+        await register(email, password);
       }
       navigate('/', { replace: true });
     } catch (err) {
-      // The auth service explains itself (duplicate email, password too short,
-      // secret not configured). Showing its message beats a generic one that
-      // sends people hunting for a password they typed correctly.
-      setError(err?.message || (mode === 'login'
-        ? 'Invalid email or password.'
-        : 'Could not create account.'));
+      setError(
+        mode === 'login'
+          ? 'Invalid email or password.'
+          : 'Could not create account — email may already be in use.'
+      );
     } finally {
       setLoading(false);
     }
@@ -87,37 +80,6 @@ export default function Login() {
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
           </label>
-
-          {mode === 'register' && (
-            <>
-              <label style={styles.label}>
-                Role
-                <select
-                  required
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  style={styles.input}
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={styles.label}>
-                Organisation
-                <input
-                  type="text"
-                  required
-                  value={orgName}
-                  onChange={(e) => setOrgName(e.target.value)}
-                  style={styles.input}
-                  placeholder="City Hospital"
-                  autoComplete="organization"
-                />
-              </label>
-            </>
-          )}
 
           {error && <div style={styles.error}>{error}</div>}
 

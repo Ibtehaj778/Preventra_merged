@@ -1,0 +1,43 @@
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+*.egg-info/
+.pytest_cache/
+**/.pytest_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+Backend/venv/
+
+# Environment files
+.env
+.env.local
+
+# Data files: pipeline artifacts (CSVs, model .pkl, SHAP .npy) are committed
+# under Backend/data/ so a fresh clone can seed Mongo without regenerating the
+# whole pipeline. Regenerate via Model/model.ipynb + Model/consequence/*.py.
+
+# Node / Frontend
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code per-user settings (not shared)
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+# Skills are private by default — a new skill under .claude/skills/ stays local.
+# To share one with the team, add an explicit un-ignore line for it below.
+.claude/skills/*
+!.claude/skills/api-conventions/

@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AuthProvider, useAuth, PORTAL_URL } from './context/AuthContext';
 import { RoleProvider } from './context/RoleContext';
 import { PatientsProvider } from './context/PatientsContext';
@@ -6,7 +7,6 @@ import AppShell from './components/layout/AppShell';
 import LoadingScreen from './components/shared/LoadingScreen';
 import ChatWidget from './components/chatbot/ChatWidget';
 import { useAppLoader } from './hooks/useAppLoader';
-import Login from './pages/Login';
 import ExecutiveSummary from './pages/ExecutiveSummary';
 import PatientRiskPanel from './pages/PatientRiskPanel';
 import PatientDetail from './pages/PatientDetail';
@@ -47,27 +47,23 @@ function AuthenticatedApp() {
   );
 }
 
+// GLP-1 no longer has its own login screen — an unauthenticated visitor
+// gets sent straight back to the shared Portal instead.
+function RedirectToPortal() {
+  useEffect(() => {
+    window.location.href = PORTAL_URL;
+  }, []);
+  return <LoadingScreen progress={0} status="Redirecting to sign in..." />;
+}
+
 function RootRoutes() {
   const { isAuthenticated } = useAuth();
-
-  // With a portal configured, it owns sign-in and sign-up for both products —
-  // this app's own /login exists only as the local-development fallback. Sending
-  // people there instead would be a second account screen that signs them into
-  // the same shared identity, which is the duplication the portal replaced.
-  if (!isAuthenticated && PORTAL_URL) {
-    window.location.replace(PORTAL_URL);
-    return null;
-  }
 
   return (
     <Routes>
       <Route
-        path="/login"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
-      />
-      <Route
         path="/*"
-        element={isAuthenticated ? <AuthenticatedApp /> : <Navigate to="/login" replace />}
+        element={isAuthenticated ? <AuthenticatedApp /> : <RedirectToPortal />}
       />
     </Routes>
   );

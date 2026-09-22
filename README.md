@@ -6,7 +6,7 @@ Three products, one login:
 |---|---|---|
 | [`GLP1/`](GLP1/) | GLP-1 adherence, cost-effectiveness and payer-ROI analytics | FastAPI (`GLP1/Backend`) + React/Vite (`GLP1/Frontend`) |
 | [`Readmissions/`](Readmissions/) | 30-day readmission risk scoring, weekly monitoring, clinician console — **and the shared auth service** | FastAPI (`Readmissions/api`) + React/Vite (`Readmissions/frontend`) |
-| [`Portal/`](Portal/) | Single sign-in / sign-up page that hands a token to either app | Static `index.html` + `config.js`, no build step |
+| [`Portal/`](Portal/) | Single sign-in / sign-up page that hands a token to either app | Static `index.html`; a 40-line build step injects per-environment URLs |
 
 ---
 
@@ -130,8 +130,11 @@ Two things that catch people out:
 
 ### 4.3 Portal config
 
-The Portal has no build step. Its config lives in [`Portal/config.js`](Portal/config.js), separate
-from the markup, so local and production values do not fight over the same file. For local work:
+The Portal reads its three URLs from `window.__PORTAL_CONFIG__`. Locally that comes from the
+committed [`Portal/config.js`](Portal/config.js), which already points at the local stack — nothing
+to change. Deployments do not use that file at all: `Portal/build.js` regenerates it from
+environment variables at build time ([§8](#8-frontend-deployment--vercel)), so no deployed origin is
+committed. For reference, the local file is:
 
 ```js
 window.__PORTAL_CONFIG__ = {
@@ -443,7 +446,7 @@ Set **Root Directory** in project settings; do not use a build command that `cd`
 |---|---|---|---|
 | `preventra-glp1` | `GLP1/Frontend` | Vite | `dist` |
 | `preventra-readmissions` | `Readmissions/frontend` | Vite | `dist` |
-| `preventra-portal` | `Portal` | Other (static) | `.` |
+| `preventra-portal` | `Portal` | Other | `dist` |
 
 Both React apps use `BrowserRouter`, so a deep link like `/patients/123` is a request for a file that
 does not exist. The SPA fallback is already committed as `vercel.json` in each frontend folder —
@@ -470,10 +473,19 @@ VITE_GLP1_URL=https://<glp1-frontend>.vercel.app
 VITE_PORTAL_URL=https://<portal>.vercel.app
 ```
 
-*Portal* — no env vars and no build. Edit [`Portal/config.js`](Portal/config.js) to the deployed
-origins and push. It currently points at `preventra-cms-mimic-production.up.railway.app`,
-`glp-1-adherence.vercel.app` and `preventra-cms-mimic.vercel.app`; update all three or the tiles
-send users into a previous deployment.
+*`preventra-portal`* — Build Command `npm run build`, Output Directory `dist`, and three env vars:
+```
+PORTAL_AUTH_BASE_URL=https://<readmissions-api>.up.railway.app
+PORTAL_GLP1_URL=https://<glp1-frontend>.vercel.app
+PORTAL_READMISSIONS_URL=https://<readmissions-frontend>.vercel.app
+```
+
+The portal is a static page with no framework, so it cannot read environment variables at runtime —
+by the time the browser has the page, the build environment is gone.
+[`Portal/build.js`](Portal/build.js) bridges that: it copies the static files into `dist/` and writes
+`config.js` from the environment, which puts the portal's URLs in the same place as every other
+service's instead of in a committed file. An unset variable warns in the build log and leaves that
+tile marked unconfigured rather than pointing it somewhere wrong.
 
 ### Post-deploy smoke test
 
@@ -514,13 +526,17 @@ Each of these was a real fault found while documenting the merge, and each is no
    boot. Both GLP-1 READMEs now name `SHARED_SECRET_KEY` and explain why it must match the other
    service.
 
-6. **The Portal's config was hardcoded in the markup.** It now lives in
-   [`Portal/config.js`](Portal/config.js) as `window.__PORTAL_CONFIG__`, with the built-in defaults
-   in `index.html` as a fallback, so local and production values no longer share one file.
+6. **The Portal's config was hardcoded in the markup.** It now comes from
+   `window.__PORTAL_CONFIG__`, with the built-in defaults in `index.html` as a fallback. Deployed
+   values are injected at build time by [`Portal/build.js`](Portal/build.js) from
+   `PORTAL_AUTH_BASE_URL` / `PORTAL_GLP1_URL` / `PORTAL_READMISSIONS_URL`, matching how the two Vite
+   apps take their `VITE_*` variables — so no environment's URLs are committed. The checked-in
+   [`Portal/config.js`](Portal/config.js) is the local-development copy and points at localhost.
 
-7. **No env templates existed.** Every service now ships a commented `.env.example`
+7. **No env templates existed.** All five services now ship a commented `.env.example`
    ([GLP-1 API](GLP1/Backend/.env.example), [GLP-1 UI](GLP1/Frontend/.env.example),
-   [Readmissions API](Readmissions/.env.example), [Readmissions UI](Readmissions/frontend/.env.example)).
+   [Readmissions API](Readmissions/.env.example), [Readmissions UI](Readmissions/frontend/.env.example),
+   [Portal](Portal/.env.example)).
 
 8. **No deployment config for the GLP-1 backend.** Added
    [`Dockerfile`](GLP1/Backend/Dockerfile), [`.dockerignore`](GLP1/Backend/.dockerignore) and

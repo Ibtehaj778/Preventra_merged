@@ -1,0 +1,9 @@
+{
+  "name": "preventra-portal",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Shared sign-in portal. Static page; the build step only injects per-environment URLs.",
+  "scripts": {
+    "build": "node build.js"
+  }
+}

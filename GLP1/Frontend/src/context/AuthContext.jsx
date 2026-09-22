@@ -6,10 +6,10 @@ const AuthContext = createContext(null);
 const TOKEN_KEY = 'glp1_token';
 const USER_KEY  = 'glp1_user';
 
-// Portal is a different origin — leaving the app entirely requires a real
-// browser navigation, not a React Router route change.
-export const PORTAL_URL =
-  import.meta.env.VITE_PORTAL_URL ?? 'https://preventra-cms-mimic-p232.vercel.app';
+// The portal is the shared sign-in surface. When it is configured, it is where
+// people arrive from and where signing out sends them. Left unset (local
+// development), this app falls back to its own /login screen.
+export const PORTAL_URL = (import.meta.env.VITE_PORTAL_URL || '').replace(/\/$/, '');
 
 function readIncomingToken() {
   const hash = window.location.hash || '';
@@ -30,39 +30,51 @@ function decodeClaims(token) {
   }
 }
 
+/** A token past its expiry is not a session. Treating it as one gives you a
+ *  dashboard that renders and then 401s on every request - and, once signing
+ *  out redirects to the portal, an app that bounces back and forth. */
+function isUsable(token) {
+  if (!token) return false;
+  const exp = decodeClaims(token)?.exp;
+  return typeof exp !== 'number' || exp * 1000 > Date.now();
+}
+
 const _incomingToken = readIncomingToken();
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => {
     if (_incomingToken) return _incomingToken;
-    return localStorage.getItem(TOKEN_KEY);
-  });
-
+    const stored = localStorage.getItem(TOKEN_KEY);
+    if (isUsable(stored)) return stored;
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    return null;
+    });
   const [user, setUser] = useState(() => {
     if (_incomingToken) {
-      const claims = decodeClaims(_incomingToken);
-      if (claims) {
+        const claims = decodeClaims(_incomingToken);
+        if (claims) {
         const incomingUser = {
-          id:         claims.sub,
-          email:      claims.email,
-          role:       claims.role,
-          org_id:     claims.org_id,
-          app_access: claims.app_access || [],
+            id:         claims.sub,
+            email:      claims.email,
+            role:       claims.role,
+            org_id:     claims.org_id,
+            app_access: claims.app_access || [],
         };
         localStorage.setItem(TOKEN_KEY, _incomingToken);
         localStorage.setItem(USER_KEY, JSON.stringify(incomingUser));
         return incomingUser;
-      }
+        }
     }
     const raw = localStorage.getItem(USER_KEY);
     if (!raw) return null;
     try {
-      return JSON.parse(raw);
+        return JSON.parse(raw);
     } catch {
-      localStorage.removeItem(USER_KEY);
-      return null;
+        localStorage.removeItem(USER_KEY);
+        return null;
     }
-  });
+    });
 
   const _persist = (accessToken, userObj) => {
     localStorage.setItem(TOKEN_KEY, accessToken);
@@ -77,20 +89,41 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
-  const register = useCallback(async (email, password) => {
-    const data = await api.register({ email, password });
+  // The auth service requires a role and an organisation at signup - they go
+  // into the account and into the token's claims, so they cannot be defaulted
+  // here without silently mislabelling every account created from this screen.
+  const register = useCallback(async (email, password, role, orgName) => {
+    const data = await api.signup({
+      email,
+      password,
+      role,
+      org_name: orgName ?? '',
+    });
     _persist(data.access_token, data.user);
     return data;
   }, []);
 
-  // No more local login screen to fall back to — logging out means
-  // leaving GLP-1 entirely and going back to the shared Portal.
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    if (PORTAL_URL) {
+      // Back to the shared sign-in page. `#signout` tells the portal to drop
+      // its own copy of the session too - it keeps a separate one per tab, and
+      // arriving at the tile screen still signed in is not signing out.
+      //
+      // Navigate WITHOUT clearing React state first. Clearing it re-renders
+      // RootRoutes, whose own "no session" redirect goes to the plain portal
+      // URL and wins the race, dropping the marker. The page is leaving anyway;
+      // there is nothing left to re-render. replace() so Back does not return
+      // to a screen whose token is already gone.
+      window.location.replace(`${PORTAL_URL}/#signout=1`);
+      return;
+    }
+
+    // No portal configured (local development): fall through to this app's own
+    // /login, which RootRoutes shows once there is no session.
     setToken(null);
     setUser(null);
-    window.location.href = PORTAL_URL;
   }, []);
 
   return (

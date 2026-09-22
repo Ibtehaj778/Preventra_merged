@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from core import loader, mongo
 from core.model import init_startup_caches
-from routers import summary, patients, segments, survival, cost, budget, shap, info, consequence, chatbot, auth
+from routers import summary, patients, segments, survival, cost, budget, shap, info, consequence, chatbot
 
 
 @asynccontextmanager
@@ -14,13 +14,17 @@ async def lifespan(app: FastAPI):
     mongo.get_client()
     await mongo.ping()
     print(f"🔌  Connected to MongoDB: {settings.mongodb_db_name}")
-    await mongo.get_shared_identity_db().users.create_index("email", unique=True)
     loader.load_binary_artifacts()
     await init_startup_caches()
     yield
     mongo.close_client()
 
 
+# This service does NOT issue tokens. The Readmissions API is the single issuer
+# for both products (its /auth/* endpoints, backed by `shared_identity.users`).
+# Here we only VERIFY, in core/security.py, with the same SHARED_SECRET_KEY.
+# A second issuer is what produced two accounts systems with differing
+# `app_access` rules, so do not re-add one.
 app = FastAPI(
     title="GLP-1 Analytics API",
     description="Backend for the GLP-1 Adherence & Cost Intelligence Platform",
@@ -46,7 +50,6 @@ app.include_router(shap.router,     prefix="/api")
 app.include_router(info.router,     prefix="/api")
 app.include_router(consequence.router, prefix="/api")
 app.include_router(chatbot.router, prefix="/api")
-app.include_router(auth.router, prefix="/api")
 
 @app.get("/health")
 def health():

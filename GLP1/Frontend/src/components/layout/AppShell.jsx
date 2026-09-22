@@ -46,6 +46,10 @@ function NavItem({ item, collapsed, isInsurer, extra = {} }) {
   );
 }
 
+// Origin only, no trailing slash. Unset means the switcher shows the entry as
+// unavailable instead of guessing at a URL.
+const READMISSIONS_URL = (import.meta.env.VITE_READMISSIONS_URL || '').replace(/\/$/, '');
+
 export default function AppShell({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -178,15 +182,32 @@ export default function AppShell({ children }) {
           <div className="text-[10px] text-white/25 uppercase tracking-widest px-1 pb-1">
             Switch App
           </div>
-          <a
-            href={`${import.meta.env.VITE_READMISSIONS_URL ?? 'https://preventra-cms-mimic.vercel.app'}/#token=${encodeURIComponent(token)}`}
-            className="flex items-center justify-between px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-white/08 hover:text-white transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              <ExternalLink size={13} />
-              Readmissions
-            </span>
-          </a>
+          {/* Disabled rather than pointed at a hardcoded default when the URL is
+              not configured. A baked-in fallback does not fail - it silently
+              sends people to whatever deployment that string named, which looks
+              like a working link to a subtly wrong app. */}
+          {READMISSIONS_URL ? (
+            <a
+              href={`${READMISSIONS_URL}/#token=${encodeURIComponent(token)}`}
+              className="flex items-center justify-between px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-white/08 hover:text-white transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <ExternalLink size={13} />
+                Readmissions
+              </span>
+            </a>
+          ) : (
+            <div
+              title="VITE_READMISSIONS_URL is not set"
+              className="flex items-center justify-between px-3 py-2 rounded-lg text-xs text-white/25 cursor-not-allowed"
+            >
+              <span className="flex items-center gap-2">
+                <ExternalLink size={13} />
+                Readmissions
+              </span>
+              <span className="text-[9px] uppercase tracking-wide">not set</span>
+            </div>
+          )}
           {user?.email && (
             <div className="px-1 pt-1 text-[10px] text-white/30 truncate">
               {user.email}

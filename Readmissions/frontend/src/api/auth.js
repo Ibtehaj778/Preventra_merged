@@ -81,13 +81,19 @@ function isExpired(claims) {
  * With no portal configured there is nowhere to go, so reload instead: the
  * token is gone either way, and the reload makes that visible rather than
  * leaving a dashboard on screen that looks signed in.
+ *
+ * `replace()`, not a normal navigation: a normal navigation pushes a new
+ * history entry and leaves the dashboard as the previous one, so Back returns
+ * to it - often served from bfcache without re-running the session check,
+ * which looks exactly like sign-out having failed. `replace()` overwrites the
+ * dashboard entry instead, so Back skips past it.
  */
 export function signOut() {
   clearToken();
   // `#signout` tells the portal to drop its own copy of the session. It keeps a
   // separate one per tab, so without this you land on the tile screen still
   // signed in - which reads as the sign-out having done nothing.
-  window.location.href = PORTAL_URL ? `${PORTAL_URL}/#signout=1` : window.location.pathname;
+  window.location.replace(PORTAL_URL ? `${PORTAL_URL}/#signout=1` : window.location.pathname);
 }
 
 /**

@@ -125,7 +125,7 @@ export function signOut() {
   // `#signout` tells the portal to drop its own copy of the session. It keeps a
   // separate one per tab, so without this you land on the tile screen still
   // signed in - which reads as the sign-out having done nothing.
-  window.location.replace(PORTAL_URL ? `${PORTAL_URL}/#signout=1` : window.location.pathname);
+  window.location.replace(PORTAL_URL ? `${PORTAL_URL}/#signout=1&chain=glp1` : window.location.pathname);
 }
 
 /**

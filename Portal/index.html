@@ -566,6 +566,22 @@
         store.del(TOKEN_KEY);
       }
     })();
+
+    // Back/forward into this exact document (bfcache), not a fresh load. Common
+    // path: sign in here, click a tile, sign out inside that app, land back on
+    // this portal on a *different* document instance that clears the token - then
+    // press Back. The browser resumes this frozen document exactly as it looked
+    // before navigating away (tiles still on screen) without re-running the script
+    // above, because bfcache restores state rather than reloading it. Re-check the
+    // token against sessionStorage now so a signed-out Back doesn't show stale tiles.
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted) return;
+      const stored = store.get(TOKEN_KEY);
+      if (!stored) return signOut();
+      const claims = readClaims(stored);
+      if (!claims || isExpired(claims)) { store.del(TOKEN_KEY); return signOut(); }
+      renderApps(stored, claims);
+    });
   </script>
 </body>
 

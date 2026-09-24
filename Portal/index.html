@@ -549,6 +549,17 @@
       if (fragment.get('signout')) {
         window.history.replaceState(null, '', window.location.pathname);
         store.del(TOKEN_KEY);
+
+        const chain = (fragment.get('chain') || '').split(',').filter(Boolean);
+        if (chain.length > 0) {
+          const [nextKey, ...rest] = chain;
+          const nextApp = CONFIG.APPS.find((a) => a.key === nextKey);
+          if (nextApp && nextApp.url) {
+            const base = nextApp.url.replace(/\/$/, '');
+            window.location.href = `${base}/#signout=1${rest.length ? `&chain=${rest.join(',')}` : ''}`;
+            return;
+          }
+        }
         return signOut();
       }
 

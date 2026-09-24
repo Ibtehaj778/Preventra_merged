@@ -11,6 +11,35 @@ const USER_KEY  = 'glp1_user';
 export const PORTAL_URL =
   import.meta.env.VITE_PORTAL_URL ?? 'https://preventra-merged-ixbe.vercel.app';
 
+const READMISSIONS_URL =
+  (import.meta.env.VITE_READMISSIONS_URL ?? 'https://preventra-merged-q2da.vercel.app').replace(/\/$/, '');
+
+function readIncomingSignout() {
+  const hash = window.location.hash || '';
+  if (!hash.includes('signout=')) return null;
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  if (!params.get('signout')) return null;
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  return (params.get('chain') || '').split(',').filter(Boolean);
+}
+
+const _incomingSignoutChain = readIncomingSignout();
+
+if (_incomingSignoutChain !== null) {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  if (_incomingSignoutChain.length > 0) {
+    const [nextKey, ...rest] = _incomingSignoutChain;
+    const nextUrl = nextKey === 'readmissions' ? READMISSIONS_URL : null;
+    if (nextUrl) {
+      window.location.replace(
+        `${nextUrl}/#signout=1${rest.length ? `&chain=${rest.join(',')}` : ''}`
+      );
+    }
+  } else {
+    window.location.replace(PORTAL_URL);
+  }
+}
 function readIncomingToken() {
   const hash = window.location.hash || '';
   if (!hash.includes('token=')) return null;
@@ -90,7 +119,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem(USER_KEY);
     setToken(null);
     setUser(null);
-    window.location.href = `${PORTAL_URL}?logout=true`;
+    window.location.replace(`${PORTAL_URL}/#signout=1&chain=readmissions`);
   }, []);
 
   return (

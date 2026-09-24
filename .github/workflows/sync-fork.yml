@@ -1,0 +1,55 @@
+name: Sync fork with upstream
+
+# Keeps Ibtehaj778/Preventra_GLP1_Readmission's `main` branch up to date with
+# reeha-sajjad/Preventra_merged's `main` branch.
+#
+# Fast-forward only, on purpose. If this fork ever gets commits of its own on
+# `main` that upstream doesn't have, a fast-forward becomes impossible and the
+# job fails loudly instead of silently overwriting or merging over that work.
+# That is a signal to sync by hand (rebase or merge, your call), not something
+# a scheduled job should ever decide on its own.
+
+on:
+  schedule:
+    # 06:00 UTC daily. Edit the cron expression to change the cadence.
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: write   # needed to push the fast-forwarded branch back to this repo
+
+jobs:
+  sync:
+    # Guards against this workflow doing anything if the file is ever copied
+    # into a different repo (e.g. someone forks this fork).
+    if: github.repository == 'Ibtehaj778/Preventra_GLP1_Readmission'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0   # full history - needed to check ancestry, not just the tip
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/reeha-sajjad/Preventra_merged.git
+
+      - name: Fetch upstream
+        run: git fetch upstream main
+
+      - name: Fast-forward main to upstream/main
+        run: |
+          set -euo pipefail
+          git checkout main
+
+          if git merge-base --is-ancestor main upstream/main; then
+            if [ "$(git rev-parse main)" = "$(git rev-parse upstream/main)" ]; then
+              echo "Already up to date with upstream/main."
+              exit 0
+            fi
+            git merge --ff-only upstream/main
+            git push origin main
+            echo "Fast-forwarded main to $(git rev-parse upstream/main)."
+          else
+            echo "::error::main has diverged from upstream/main (this fork has its own commits on main that upstream doesn't). Refusing to fast-forward - sync this manually with a merge or rebase."
+            exit 1
+          fi

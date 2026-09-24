@@ -14,32 +14,37 @@ export const PORTAL_URL =
 const READMISSIONS_URL =
   (import.meta.env.VITE_READMISSIONS_URL ?? 'https://preventra-merged-q2da.vercel.app').replace(/\/$/, '');
 
-function readIncomingSignout() {
+/**
+ * Called from main.jsx before anything renders. Handles an incoming
+ * `#signout=1&chain=...` hop in the shared logout relay: clears this app's
+ * token, then forwards the rest of the chain to the next app, or returns to the
+ * portal when the chain is empty.
+ *
+ * Returns true when it has taken over navigation, so main.jsx skips rendering.
+ * That matters: `location.replace()` does not stop this document, and rendering
+ * with no token would mount RedirectToPortal - painting the loading screen for
+ * the duration of the hop and firing a second, competing navigation.
+ */
+export function receiveSignout() {
   const hash = window.location.hash || '';
-  if (!hash.includes('signout=')) return null;
+  if (!hash.includes('signout=')) return false;
   const params = new URLSearchParams(hash.replace(/^#/, ''));
-  if (!params.get('signout')) return null;
+  if (!params.get('signout')) return false;
+
   history.replaceState(null, '', window.location.pathname + window.location.search);
-  return (params.get('chain') || '').split(',').filter(Boolean);
-}
-
-const _incomingSignoutChain = readIncomingSignout();
-
-if (_incomingSignoutChain !== null) {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
-  if (_incomingSignoutChain.length > 0) {
-    const [nextKey, ...rest] = _incomingSignoutChain;
-    const nextUrl = nextKey === 'readmissions' ? READMISSIONS_URL : null;
-    if (nextUrl) {
-      window.location.replace(
-        `${nextUrl}/#signout=1${rest.length ? `&chain=${rest.join(',')}` : ''}`
-      );
-    }
-  } else {
-    window.location.replace(PORTAL_URL);
-  }
+
+  const [nextKey, ...rest] = (params.get('chain') || '').split(',').filter(Boolean);
+  const nextUrl = nextKey === 'readmissions' ? READMISSIONS_URL : null;
+  // An unknown next hop ends the relay at the portal rather than stranding the
+  // user here with no navigation at all.
+  window.location.replace(nextUrl
+    ? `${nextUrl}/#signout=1${rest.length ? `&chain=${rest.join(',')}` : ''}`
+    : PORTAL_URL);
+  return true;
 }
+
 function readIncomingToken() {
   const hash = window.location.hash || '';
   if (!hash.includes('token=')) return null;
@@ -114,11 +119,15 @@ export function AuthProvider({ children }) {
 
   // No more local login screen to fall back to — logging out means
   // leaving GLP-1 entirely and going back to the shared Portal.
+  //
+  // Navigate WITHOUT touching React state. Clearing token/user re-renders into
+  // RedirectToPortal, whose effect navigates to the plain portal URL - and that
+  // later navigation cancels this one, dropping `#signout`. The portal then
+  // never clears its own session and shows the tiles, still signed in. The page
+  // is leaving anyway; there is nothing to re-render for.
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
-    setToken(null);
-    setUser(null);
     window.location.replace(`${PORTAL_URL}/#signout=1&chain=readmissions`);
   }, []);
 

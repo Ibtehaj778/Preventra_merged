@@ -51,7 +51,8 @@ function AuthenticatedApp() {
 // gets sent straight back to the shared Portal instead.
 function RedirectToPortal() {
   useEffect(() => {
-    window.location.href = PORTAL_URL;
+    // replace: Back must not return to a page that immediately redirects again.
+    window.location.replace(PORTAL_URL);
   }, []);
   return <LoadingScreen progress={0} status="Redirecting to sign in..." />;
 }

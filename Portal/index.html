@@ -586,13 +586,31 @@
     // above, because bfcache restores state rather than reloading it. Re-check the
     // token against sessionStorage now so a signed-out Back doesn't show stale tiles.
     window.addEventListener('pageshow', (event) => {
-      if (!event.persisted) return;
-      const stored = store.get(TOKEN_KEY);
-      if (!stored) return signOut();
-      const claims = readClaims(stored);
-      if (!claims || isExpired(claims)) { store.del(TOKEN_KEY); return signOut(); }
-      renderApps(stored, claims);
-    });
+  if (!event.persisted) return;
+
+  const fragment = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+  if (fragment.get('signout')) {
+    window.history.replaceState(null, '', window.location.pathname);
+    store.del(TOKEN_KEY);
+    const chain = (fragment.get('chain') || '').split(',').filter(Boolean);
+    if (chain.length > 0) {
+      const [nextKey, ...rest] = chain;
+      const nextApp = CONFIG.APPS.find((a) => a.key === nextKey);
+      if (nextApp && nextApp.url) {
+        const base = nextApp.url.replace(/\/$/, '');
+        window.location.href = `${base}/#signout=1${rest.length ? `&chain=${rest.join(',')}` : ''}`;
+        return;
+      }
+    }
+    return signOut();
+  }
+
+  const stored = store.get(TOKEN_KEY);
+  if (!stored) return signOut();
+  const claims = readClaims(stored);
+  if (!claims || isExpired(claims)) { store.del(TOKEN_KEY); return signOut(); }
+  renderApps(stored, claims);
+});
   </script>
 </body>
 

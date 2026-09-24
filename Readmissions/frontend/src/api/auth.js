@@ -16,7 +16,39 @@ const STORAGE_KEY = 'shared_auth_token';
 // to send them back to on the way out. Without it (local development against a
 // bare dashboard) the app behaves as it always did.
 const PORTAL_URL = (import.meta.env.VITE_PORTAL_URL || '').replace(/\/$/, '');
+const GLP1_URL = (import.meta.env.VITE_GLP1_URL || '').replace(/\/$/, '');
+/**
+ * Called once before the app renders, before requireSession(). Checks for an
+ * incoming `#signout=1&chain=...` handoff from another app in the shared
+ * logout relay. Clears this app's own token, then either forwards the
+ * remaining chain to the next app, or returns to the portal if the chain is
+ * empty. Returns true when it has taken over navigation, so main.jsx can skip
+ * rendering (and skip requireSession(), which would otherwise redirect too).
+ */
+export function receiveSignout() {
+  const hash = window.location.hash || '';
+  if (!hash.includes('signout=')) return false;
 
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  if (!params.get('signout')) return false;
+
+  window.history.replaceState(null, '', window.location.pathname);
+  clearToken();
+
+  const chain = (params.get('chain') || '').split(',').filter(Boolean);
+  if (chain.length > 0) {
+    const [nextKey, ...rest] = chain;
+    const nextUrl = nextKey === 'glp1' ? GLP1_URL : null;
+    if (nextUrl) {
+      window.location.replace(
+        `${nextUrl}/#signout=1${rest.length ? `&chain=${rest.join(',')}` : ''}`
+      );
+      return true;
+    }
+  }
+  window.location.replace(PORTAL_URL || window.location.pathname);
+  return true;
+}
 // sessionStorage, not localStorage: the token dies with the tab. A demo laptop
 // left open does not stay signed in, and there is no sign-out flow yet to undo
 // it if it did.

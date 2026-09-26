@@ -128,6 +128,8 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    setToken(null);
+    setUser(null);
     window.location.replace(`${PORTAL_URL}/#signout=1&chain=readmissions`);
   }, []);
 

@@ -4,16 +4,16 @@
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
     "watchPatterns": [
-      "core/**",
-      "routers/**",
-      "schemas/**",
-      "main.py",
-      "requirements.txt",
-      "Dockerfile",
-      ".dockerignore",
-      "railway.json",
-      "data/final_gb_model.pkl",
-      "data/shap_values_test.npy"
+      "/GLP1/Backend/core/**",
+      "/GLP1/Backend/routers/**",
+      "/GLP1/Backend/schemas/**",
+      "/GLP1/Backend/main.py",
+      "/GLP1/Backend/requirements.txt",
+      "/GLP1/Backend/Dockerfile",
+      "/GLP1/Backend/.dockerignore",
+      "/GLP1/Backend/railway.json",
+      "/GLP1/Backend/data/final_gb_model.pkl",
+      "/GLP1/Backend/data/shap_values_test.npy"
     ]
   },
   "deploy": {

@@ -4,16 +4,16 @@
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
     "watchPatterns": [
-      "api/**",
-      "models/**",
-      "requirements-api.txt",
-      "Dockerfile",
-      ".dockerignore",
-      "railway.json",
-      "data/mimic/model/results/phase1_model.joblib",
-      "data/mimic/model/results/mimic_feature_spec.json",
-      "data/mimic/model/results/model_card_phase1.json",
-      "docs/mimic/band_thresholds_mimic.json"
+      "/Readmissions/api/**",
+      "/Readmissions/models/**",
+      "/Readmissions/requirements-api.txt",
+      "/Readmissions/Dockerfile",
+      "/Readmissions/.dockerignore",
+      "/Readmissions/railway.json",
+      "/Readmissions/data/mimic/model/results/phase1_model.joblib",
+      "/Readmissions/data/mimic/model/results/mimic_feature_spec.json",
+      "/Readmissions/data/mimic/model/results/model_card_phase1.json",
+      "/Readmissions/docs/mimic/band_thresholds_mimic.json"
     ]
   },
   "deploy": {

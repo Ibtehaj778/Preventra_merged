@@ -14,7 +14,7 @@ import { useRole } from '../context/RoleContext';
 const ICER_THRESHOLD = 50000;
 
 export default function CostEffectiveness() {
-  const { isInsurer }      = useRole();
+  const { isCostView }      = useRole();
   const { data: costData } = useCostEffectiveness();
   const { segments }       = useSegments();
   const ceaData  = costData.cea;
@@ -63,12 +63,12 @@ export default function CostEffectiveness() {
 
   return (
     <div className="max-w-[1280px] mx-auto animate-fade-in space-y-5">
-      {!isInsurer && (
+      {!isCostView && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium animate-fade-up"
           style={{ background: '#F0FFF4', color: '#2E7D32', border: '1px solid #C8E6C9' }}>
           <span className="flex items-center gap-2.5">
             <Stethoscope size={15} />
-            Clinician View — This financial analysis is primarily for Insurer/Payer use. All data is available for reference.
+            Care team view — This financial analysis is mainly for hospital administrators and insurers. All data is available for reference.
           </span>
           <div className="flex items-center gap-3 text-xs font-semibold flex-shrink-0">
             <Link to="/patients" className="hover:underline underline-offset-2" style={{ color: '#2E7D32' }}>Patient Risk Panel →</Link>

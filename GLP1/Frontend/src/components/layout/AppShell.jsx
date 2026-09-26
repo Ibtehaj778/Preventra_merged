@@ -10,23 +10,26 @@ import {
 
 const NAV_ITEMS = [
   { to: '/',         icon: LayoutDashboard, label: 'Executive Summary',    primary: null },
-  { to: '/patients', icon: Users,           label: 'Patient Risk Panel',   primary: 'clinician' },
+  { to: '/patients', icon: Users,           label: 'Patient Risk Panel',   primary: 'care_team' },
   { to: '/segments', icon: PieChart,        label: 'Segment Explorer',     primary: null },
   { to: '/survival', icon: TrendingDown,    label: 'Survival Analysis',    primary: null },
-  // { to: '/cost',     icon: DollarSign,      label: 'Cost-Effectiveness',   primary: 'insurer' },
-  { to: '/budget',      icon: Calculator,     label: 'Budget Simulator',     primary: 'insurer' },
-  { to: '/consequence', icon: AlertTriangle,  label: 'Cost of Inaction',     primary: 'insurer' },
+  // { to: '/cost',     icon: DollarSign,      label: 'Cost-Effectiveness',   primary: 'cost' },
+  { to: '/budget',      icon: Calculator,     label: 'Budget Simulator',     primary: 'cost' },
+  { to: '/consequence', icon: AlertTriangle,  label: 'Cost of Inaction',     primary: 'cost' },
   // { to: '/settings', icon: Settings,        label: 'Settings & Data Info', primary: null },
 ];
 
-function NavItem({ item, collapsed, isInsurer, extra = {} }) {
+// `primary` marks who a page is mainly for: 'cost' pages for the roles that own
+// the budget, 'care_team' pages for the people looking after patients. Pages
+// meant for the other group are dimmed and badged, not hidden.
+function NavItem({ item, collapsed, isCostView, extra = {} }) {
   const { to, icon: Icon, label, primary } = item;
   const mismatch = primary && (
-    (primary === 'insurer'   && !isInsurer) ||
-    (primary === 'clinician' &&  isInsurer)
+    (primary === 'cost'      && !isCostView) ||
+    (primary === 'care_team' &&  isCostView)
   );
-  const badgeLabel = primary === 'insurer' ? 'Insurer' : 'Clinician';
-  const badgeColor = primary === 'insurer' ? '#2E6DB4' : '#2E7D32';
+  const badgeLabel = primary === 'cost' ? 'Finance' : 'Care team';
+  const badgeColor = primary === 'cost' ? '#2E6DB4' : '#2E7D32';
   return (
     <NavLink
       key={to} to={to} {...extra}
@@ -49,7 +52,7 @@ function NavItem({ item, collapsed, isInsurer, extra = {} }) {
 export default function AppShell({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { role, setRole, isInsurer } = useRole();
+  const { roleLabel, isCostView } = useRole();
   const { logout, user, token } = useAuth();
   const location = useLocation();
 
@@ -111,29 +114,14 @@ export default function AppShell({ children }) {
           </button>
         </div>
 
-        {/* Role toggle */}
+        {/* Role - assigned by an administrator, so shown here, never chosen */}
         {!isCollapsed && (
-          <div className="mx-3 mt-4 mb-2 rounded-lg overflow-hidden animate-fade-in"
+          <div className="mx-3 mt-4 mb-2 rounded-lg px-3 py-2 animate-fade-in"
                style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <div className="text-[10px] text-white/30 uppercase tracking-widest px-3 pt-2 pb-1">Active Role</div>
-            <div className="flex p-1 gap-1">
-              {[
-                { id: 'case_manager', icon: Stethoscope, label: 'Clinician' },
-                { id: 'insurer',      icon: Building2,   label: 'Insurer'   },
-              ].map(({ id, icon: Icon, label }) => (
-                <button
-                  key={id}
-                  onClick={() => setRole(id)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all"
-                  style={{
-                    background: role === id ? 'var(--color-primary-light)' : 'transparent',
-                    color: role === id ? '#fff' : 'rgba(255,255,255,0.45)',
-                  }}
-                >
-                  <Icon size={12} />
-                  {label}
-                </button>
-              ))}
+            <div className="text-[10px] text-white/30 uppercase tracking-widest">Role</div>
+            <div className="flex items-center gap-1.5 text-[12px] font-medium text-white/80 mt-0.5">
+              {isCostView ? <Building2 size={12} /> : <Stethoscope size={12} />}
+              {roleLabel}
             </div>
           </div>
         )}
@@ -143,25 +131,25 @@ export default function AppShell({ children }) {
           {/* Section: Overview */}
           {!isCollapsed && <div className="text-[10px] text-white/25 uppercase tracking-widest px-3 pt-3 pb-1">Overview</div>}
           {NAV_ITEMS.slice(0, 2).map(item => (
-            <NavItem key={item.to} item={item} collapsed={isCollapsed} isInsurer={isInsurer}
+            <NavItem key={item.to} item={item} collapsed={isCollapsed} isCostView={isCostView}
               extra={item.to === '/' ? { end: true } : {}} />
           ))}
 
           {/* Section: Analytics */}
           {!isCollapsed && <div className="text-[10px] text-white/25 uppercase tracking-widest px-3 pt-4 pb-1">Analytics</div>}
           {NAV_ITEMS.slice(2, 4).map(item => (
-            <NavItem key={item.to} item={item} collapsed={isCollapsed} isInsurer={isInsurer} />
+            <NavItem key={item.to} item={item} collapsed={isCollapsed} isCostView={isCostView} />
           ))}
 
           {/* Section: Financial — insurer gets badge */}
           {!isCollapsed && (
             <div className="flex items-center gap-2 px-3 pt-4 pb-1">
               <div className="text-[10px] text-white/25 uppercase tracking-widest">Financial</div>
-              {isInsurer && <div className="text-[9px] bg-blue-500/30 text-blue-300 px-1.5 py-0.5 rounded-full">Primary</div>}
+              {isCostView && <div className="text-[9px] bg-blue-500/30 text-blue-300 px-1.5 py-0.5 rounded-full">Primary</div>}
             </div>
           )}
           {NAV_ITEMS.slice(4, 6).map(item => (
-            <NavItem key={item.to} item={item} collapsed={isCollapsed} isInsurer={isInsurer} />
+            <NavItem key={item.to} item={item} collapsed={isCollapsed} isCostView={isCostView} />
           ))}
 
           {/* Settings */}
@@ -238,9 +226,9 @@ export default function AppShell({ children }) {
           <div className="flex items-center gap-3 flex-shrink-0">
             {/* Role indicator pill */}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-                 style={{ background: isInsurer ? '#E3F2FD' : '#E8F5E9', color: isInsurer ? '#1B4F8A' : '#2E7D32' }}>
-              {isInsurer ? <Building2 size={12} /> : <Stethoscope size={12} />}
-              <span className="hidden sm:inline">{isInsurer ? 'Insurer View' : 'Clinician View'}</span>
+                 style={{ background: isCostView ? '#E3F2FD' : '#E8F5E9', color: isCostView ? '#1B4F8A' : '#2E7D32' }}>
+              {isCostView ? <Building2 size={12} /> : <Stethoscope size={12} />}
+              <span className="hidden sm:inline">{roleLabel}</span>
             </div>
             {/* Data freshness */}
             <div className="hidden md:block text-xs text-gray-400">

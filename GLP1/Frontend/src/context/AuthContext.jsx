@@ -45,6 +45,17 @@ export function receiveSignout() {
   return true;
 }
 
+/**
+ * Clear this app's session and hand over to the portal's sign-out relay, which
+ * also clears the portal's and Readmissions' copies. Used by Log out, and by
+ * the API client when the backend says the session is no longer valid.
+ */
+export function endSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  window.location.replace(`${PORTAL_URL}/#signout=1&chain=readmissions`);
+}
+
 function readIncomingToken() {
   const hash = window.location.hash || '';
   if (!hash.includes('token=')) return null;
@@ -77,11 +88,12 @@ export function AuthProvider({ children }) {
       const claims = decodeClaims(_incomingToken);
       if (claims) {
         const incomingUser = {
-          id:         claims.sub,
-          email:      claims.email,
-          role:       claims.role,
-          org_id:     claims.org_id,
-          app_access: claims.app_access || [],
+          id:          claims.sub,
+          email:       claims.email,
+          role:        claims.role,
+          status:      claims.status,
+          hospital_id: claims.hospital_id,
+          app_access:  claims.app_access || [],
         };
         localStorage.setItem(TOKEN_KEY, _incomingToken);
         localStorage.setItem(USER_KEY, JSON.stringify(incomingUser));
@@ -125,15 +137,15 @@ export function AuthProvider({ children }) {
   // later navigation cancels this one, dropping `#signout`. The portal then
   // never clears its own session and shows the tiles, still signed in. The page
   // is leaving anyway; there is nothing to re-render for.
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    window.location.replace(`${PORTAL_URL}/#signout=1&chain=readmissions`);
-  }, []);
+  const logout = useCallback(() => endSession(), []);
 
   return (
     <AuthContext.Provider
-      value={{ token, user, isAuthenticated: !!token, login, register, logout }}
+      // A pending account is not signed in as far as this app is concerned: it
+      // goes back to the portal, which shows the "waiting for approval" screen.
+      // The backend refuses it data regardless; this only avoids a dead screen.
+      value={{ token, user, isAuthenticated: !!token && user?.status !== 'pending',
+               login, register, logout }}
     >
       {children}
     </AuthContext.Provider>

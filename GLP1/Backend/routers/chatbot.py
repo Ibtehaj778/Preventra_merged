@@ -15,15 +15,25 @@ import time
 import uuid
 from collections import OrderedDict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from core import chatbot_tools, llm
 from core.config import settings
+from core.security import current_user
 from schemas.chatbot import ChatRequest, ChatResponse, ToolCallLog
 
 logger = logging.getLogger("chatbot.router")
 
 router = APIRouter(prefix="/chatbot", tags=["chatbot"])
+
+# Which framing the assistant leads with, decided by the signed-in account - not
+# by the request, which anyone can edit. Roles that own the budget lead with
+# cost; everyone else leads with the patient.
+_COST_FIRST_ROLES = {"superadmin", "hospital_admin", "insurer"}
+
+
+def _audience(user: dict) -> str:
+    return "insurer" if user["role"] in _COST_FIRST_ROLES else "case_manager"
 
 _MAX_SESSIONS = 1000
 _SESSION_TTL_SECONDS = 60 * 60 * 24
@@ -60,7 +70,7 @@ def _trim(messages: list[dict]) -> list[dict]:
 
 
 @router.post("/message", response_model=ChatResponse)
-async def post_message(req: ChatRequest) -> ChatResponse:
+async def post_message(req: ChatRequest, user: dict = Depends(current_user)) -> ChatResponse:
     if not settings.chatbot_enabled:
         raise HTTPException(status_code=503, detail="Chatbot is disabled.")
 
@@ -79,7 +89,7 @@ async def post_message(req: ChatRequest) -> ChatResponse:
         session["messages"].append({"role": "user", "content": latest_user.content})
 
     try:
-        system_instruction = await chatbot_tools.build_system_instruction(req.role_context)
+        system_instruction = await chatbot_tools.build_system_instruction(_audience(user))
     except Exception as exc:  # noqa: BLE001
         logger.exception("Snapshot build failed")
         system_instruction = chatbot_tools._BASE_SYSTEM_PROMPT

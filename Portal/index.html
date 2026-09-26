@@ -315,9 +315,10 @@
 
     <div class="error hidden" id="login-error"></div>
 
-    <!-- One form for both actions. Sign-up reveals two more fields rather than
-         living on a second page: it is the same request to a different path,
-         and a second page would duplicate the error handling. -->
+    <!-- One form for both actions: it is the same request to a different path,
+         and a second page would duplicate the error handling. Sign-up asks for
+         no role and no hospital - an administrator assigns both, so typing a
+         hospital's name is never enough to see its patients. -->
     <form id="login-form">
       <label for="email">Email</label>
       <input id="email" name="email" type="email" autocomplete="username" required>
@@ -325,18 +326,10 @@
       <label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required>
 
-      <div id="signup-fields" class="hidden">
-        <label for="role">Role</label>
-        <input id="role" name="role" type="text" list="role-options" placeholder="Doctor">
-        <datalist id="role-options">
-          <option value="Doctor"></option><option value="Nurse"></option>
-          <option value="Hospital"></option><option value="Pharmacy"></option>
-          <option value="Insurance"></option><option value="Patient"></option>
-        </datalist>
-
-        <label for="org-name">Organisation</label>
-        <input id="org-name" name="org_name" type="text" placeholder="City Hospital">
-      </div>
+      <p id="signup-note" class="sub hidden">
+        New accounts wait for an administrator to approve them and assign
+        your hospital and role.
+      </p>
 
       <button type="submit" id="login-button">Sign in</button>
     </form>
@@ -345,6 +338,24 @@
       <span id="switch-text">No account yet?</span>
       <button type="button" class="linkish" id="switch-mode">Create one</button>
     </p>
+  </main>
+
+  <!-- ── waiting for approval ──────────────────────────────────────────────── -->
+  <main class="card hidden" id="pending-view">
+    <div class="who">
+      <div class="who-brand">
+        <img src="logo.png" alt="" onerror="this.remove()">
+        <div><b id="pending-email">—</b><br><span>Waiting for approval</span></div>
+      </div>
+      <button class="ghost" id="pending-sign-out" style="width:auto;padding:6px 12px;margin:0">Sign out</button>
+    </div>
+    <h1>Your account is waiting for approval</h1>
+    <p class="sub">
+      An administrator needs to approve it and assign your hospital and role.
+      You can close this page; once you are approved, signing in takes you
+      straight to your applications.
+    </p>
+    <button type="button" id="check-again">Check again</button>
   </main>
 
   <!-- ── choose an app ───────────────────────────────────────────────────────── -->
@@ -408,10 +419,17 @@
         : `${base}/#token=${encodeURIComponent(token)}`;
     }
 
+    // Display names for the fixed roles in Readmissions/api/auth.py:ROLES.
+    const ROLE_LABELS = {
+      superadmin: 'Superadmin', hospital_admin: 'Hospital admin', doctor: 'Doctor',
+      nurse: 'Nurse', case_manager: 'Case manager', insurer: 'Insurer', patient: 'Patient',
+    };
+
     function renderApps(token, claims) {
       $('who-email').textContent = claims.email || '—';
       $('who-org').textContent =
-        [claims.role, claims.org_id].filter(Boolean).join(' · ') || 'signed in';
+        [ROLE_LABELS[claims.role] || claims.role, claims.hospital_id]
+          .filter(Boolean).join(' · ') || 'signed in';
 
       const granted = Array.isArray(claims.app_access) ? claims.app_access : [];
       const available = CONFIG.APPS.filter((a) => granted.includes(a.key));
@@ -446,7 +464,20 @@
       }
 
       $('login-view').classList.add('hidden');
+      $('pending-view').classList.add('hidden');
       $('apps-view').classList.remove('hidden');
+    }
+
+    function renderPending(claims) {
+      $('pending-email').textContent = claims.email || '—';
+      $('login-view').classList.add('hidden');
+      $('apps-view').classList.add('hidden');
+      $('pending-view').classList.remove('hidden');
+    }
+
+    /** Tiles for an approved account, the waiting screen for a pending one. */
+    function show(token, claims) {
+      return claims.status === 'pending' ? renderPending(claims) : renderApps(token, claims);
     }
 
     function signIn(token) {
@@ -454,12 +485,33 @@
       if (!claims) return showError('That token could not be read.');
       if (isExpired(claims)) return showError('That session has expired. Sign in again.');
       store.set(TOKEN_KEY, token);
-      renderApps(token, claims);
+      show(token, claims);
+    }
+
+    /** Swap a stored token for one carrying the account's CURRENT role and
+     *  status. Without this, someone approved since they signed in would stay on
+     *  the waiting screen - and hand an app a token that still says "pending" -
+     *  until they signed in again.
+     *
+     *  Returns the fresh token, null if the account is gone or the token is dead
+     *  (sign in again), or the old token if the service could not be reached, so
+     *  a network blip does not sign anyone out. */
+    async function refreshToken(token) {
+      try {
+        const response = await fetch(`${CONFIG.AUTH_BASE_URL.replace(/\/$/, '')}/auth/refresh`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}` },
+        });
+        if (response.status === 401) return null;
+        if (!response.ok) return token;
+        const body = await response.json().catch(() => ({}));
+        return body.token || token;
+      } catch { return token; }
     }
 
     function signOut() {
       store.del(TOKEN_KEY);
       $('apps-view').classList.add('hidden');
+      $('pending-view').classList.add('hidden');
       $('login-view').classList.remove('hidden');
       $('login-form').reset();
       clearError();
@@ -475,11 +527,7 @@
 
       try {
         const path = MODE === 'signup' ? '/auth/signup' : '/auth/login';
-        const payload = MODE === 'signup'
-          ? { email: $('email').value, password: $('password').value,
-              role: ($('role').value || 'Doctor').trim(),
-              org_name: $('org-name').value.trim() }
-          : { email: $('email').value, password: $('password').value };
+        const payload = { email: $('email').value, password: $('password').value };
 
         const response = await fetch(`${CONFIG.AUTH_BASE_URL.replace(/\/$/, '')}${path}`, {
           method: 'POST',
@@ -517,7 +565,8 @@
 
     // ── sign in / sign up ────────────────────────────────────────────────────
     // Sign-up returns the same body as sign-in, token included, so a brand new
-    // account lands on the tiles instead of being bounced back to a login form.
+    // account lands on the waiting screen instead of being bounced back to a
+    // login form.
     let MODE = 'login';
 
     function setMode(mode) {
@@ -525,8 +574,7 @@
       const up = mode === 'signup';
       $('form-title').textContent = up ? 'Create account' : 'Sign in';
       $('login-button').textContent = up ? 'Create account' : 'Sign in';
-      $('signup-fields').classList.toggle('hidden', !up);
-      $('role').required = up;
+      $('signup-note').classList.toggle('hidden', !up);
       $('password').setAttribute('autocomplete', up ? 'new-password' : 'current-password');
       $('switch-text').textContent = up ? 'Already have an account?' : 'No account yet?';
       $('switch-mode').textContent = up ? 'Sign in' : 'Create one';
@@ -537,6 +585,15 @@
       () => setMode(MODE === 'login' ? 'signup' : 'login'));
 
     $('sign-out').addEventListener('click', signOut);
+    $('pending-sign-out').addEventListener('click', signOut);
+
+    $('check-again').addEventListener('click', async () => {
+      const stored = store.get(TOKEN_KEY);
+      if (!stored) return signOut();
+      const fresh = await refreshToken(stored);
+      if (!fresh) return signOut();
+      signIn(fresh);
+    });
 
     // ── on load ──────────────────────────────────────────────────────────────────
     (function start() {
@@ -573,7 +630,10 @@
       const stored = store.get(TOKEN_KEY);
       if (stored) {
         const claims = readClaims(stored);
-        if (claims && !isExpired(claims)) return renderApps(stored, claims);
+        if (claims && !isExpired(claims)) {
+          show(stored, claims);          // draw at once, then correct from the database
+          return refreshToken(stored).then((fresh) => (fresh ? signIn(fresh) : signOut()));
+        }
         store.del(TOKEN_KEY);
       }
     })();
@@ -609,7 +669,7 @@
   if (!stored) return signOut();
   const claims = readClaims(stored);
   if (!claims || isExpired(claims)) { store.del(TOKEN_KEY); return signOut(); }
-  renderApps(stored, claims);
+  show(stored, claims);
 });
   </script>
 </body>

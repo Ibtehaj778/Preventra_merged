@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../data/api';
-import { useRole } from '../context/RoleContext';
 
 const SESSION_KEY = 'glp1_chatbot_session_id';
 
@@ -29,7 +28,6 @@ function clearSessionId() {
 }
 
 export function useChatbot() {
-  const { role } = useRole();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -71,7 +69,6 @@ export function useChatbot() {
       const payload = {
         messages: [{ role: 'user', content: trimmed }],
         session_id: sessionId || undefined,
-        role_context: role,
       };
       const data = await api.postChatMessage(payload);
       if (data?.session_id && data.session_id !== sessionId) {
@@ -99,7 +96,7 @@ export function useChatbot() {
     } finally {
       setLoading(false);
     }
-  }, [loading, sessionId, role]);
+  }, [loading, sessionId]);
 
   const clearHistory = useCallback(async () => {
     const currentId = sessionId;

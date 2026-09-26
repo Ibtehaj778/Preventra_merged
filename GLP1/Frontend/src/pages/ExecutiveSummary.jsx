@@ -131,7 +131,7 @@ function PopulationBar({ totalN, segmentCards }) {
 
 /* ── Main Page ─────────────────────────────────────────────────────── */
 export default function ExecutiveSummary() {
-  const { isInsurer } = useRole();
+  const { isCostView } = useRole();
   const { data: summaryData } = useSummary();
 
   const summaryKPIs        = summaryData.kpis;
@@ -151,14 +151,14 @@ export default function ExecutiveSummary() {
 
   return (
     <div className="exec-summary-page">
-      {isInsurer && (
+      {isCostView && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium animate-fade-up"
           style={{ background: '#EBF4FF', color: '#1B4F8A', border: '1px solid #BFDBFE' }}>
-          <AlertTriangle size={15} /> Insurer View — Financial metrics and ROI analysis are foregrounded
+          <AlertTriangle size={15} /> Finance view — Financial metrics and ROI analysis are foregrounded
         </div>
       )}
 
-      {!isInsurer && (() => {
+      {!isCostView && (() => {
         const dropouts = Math.round(
           (summaryKPIs.dropoutRate ?? summaryKPIs.dropout_rate ?? 0) *
           (summaryKPIs.totalPatients ?? summaryKPIs.total_patients ?? 0)
@@ -226,7 +226,7 @@ export default function ExecutiveSummary() {
       <div className="exec-bottom-grid">
         {/* Zone C left — role-based */}
         <div className="card p-5 animate-fade-up stagger-5">
-          {isInsurer ? (() => {
+          {isCostView ? (() => {
             const avgCost = summaryKPIs.avgAnnualCost ?? summaryKPIs.avg_annual_cost ?? 10603;
             const ranked = adherenceBySegment
               .map(s => ({
@@ -319,7 +319,7 @@ export default function ExecutiveSummary() {
 
         {/* Global SHAP drivers or wasted spend (role-based) */}
         <div className="card p-5 animate-fade-up stagger-6">
-          {isInsurer ? (
+          {isCostView ? (
             <>
               <SectionHeader title="Wasted Spend by Segment" sub="Annual drug spend on patients who discontinue" />
               <ResponsiveContainer width="100%" height={240}>

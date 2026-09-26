@@ -1,3 +1,5 @@
+import { endSession } from "../context/AuthContext";
+
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 // Accounts live in one place for both products: the Readmissions API's /auth/*
@@ -12,17 +14,23 @@ const AUTH_BASE = (import.meta.env.VITE_AUTH_URL ?? "http://localhost:8001").rep
 // persists the token here on every sign-in and on the portal hand-off.
 const TOKEN_KEY = "glp1_token";
 
-/** Protected routes (/api/patients*) verify a bearer token signed by the auth
- *  service. Sending it on every call is simpler than tracking which ones need
- *  it, and harmless on the ones that do not. */
+/** Every /api route needs a bearer token signed by the auth service. */
 function authHeaders(extra = {}) {
   const token = localStorage.getItem(TOKEN_KEY);
   return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
 }
 
+/** 401 means the session is over: the token expired or the account was
+ *  removed. End it here rather than let the caller fall back to mock data,
+ *  which would show a signed-out user a dashboard of made-up numbers. */
+function check(res, path) {
+  if (res.status === 401) endSession();
+  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+}
+
 async function get(path) {
   const res = await fetch(`${BASE}${path}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  check(res, path);
   return res.json();
 }
 
@@ -32,13 +40,13 @@ async function post(path, body) {
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  check(res, path);
   return res.json();
 }
 
 async function del(path) {
   const res = await fetch(`${BASE}${path}`, { method: "DELETE", headers: authHeaders() });
-  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  check(res, path);
   return res.json();
 }
 

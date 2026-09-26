@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
 from core import loader, mongo
 from core.model import init_startup_caches
+from core.security import current_user
 from routers import summary, patients, segments, survival, cost, budget, shap, info, consequence, chatbot
 
 
@@ -40,16 +41,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(summary.router,  prefix="/api")
-app.include_router(patients.router, prefix="/api")
-app.include_router(segments.router, prefix="/api")
-app.include_router(survival.router, prefix="/api")
-app.include_router(cost.router,     prefix="/api")
-app.include_router(budget.router,   prefix="/api")
-app.include_router(shap.router,     prefix="/api")
-app.include_router(info.router,     prefix="/api")
-app.include_router(consequence.router, prefix="/api")
-app.include_router(chatbot.router, prefix="/api")
+# Every /api route needs an active, signed-in user - read from the database per
+# request (core/security.py). Attached here, once, rather than per route, so a
+# route added later cannot forget it. /health stays open for the platform.
+_signed_in = [Depends(current_user)]
+
+app.include_router(summary.router,  prefix="/api", dependencies=_signed_in)
+app.include_router(patients.router, prefix="/api", dependencies=_signed_in)
+app.include_router(segments.router, prefix="/api", dependencies=_signed_in)
+app.include_router(survival.router, prefix="/api", dependencies=_signed_in)
+app.include_router(cost.router,     prefix="/api", dependencies=_signed_in)
+app.include_router(budget.router,   prefix="/api", dependencies=_signed_in)
+app.include_router(shap.router,     prefix="/api", dependencies=_signed_in)
+app.include_router(info.router,     prefix="/api", dependencies=_signed_in)
+app.include_router(consequence.router, prefix="/api", dependencies=_signed_in)
+app.include_router(chatbot.router, prefix="/api", dependencies=_signed_in)
 
 @app.get("/health")
 def health():

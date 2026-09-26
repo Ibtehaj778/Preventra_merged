@@ -78,7 +78,7 @@ def require_manual_entry():
 # API key would mean shipping that key to the browser to let people sign in,
 # which defeats the point of having one.
 _UNAUTHENTICATED_PATHS = {"/healthz", "/auth/signup", "/auth/login",
-                         "/auth/me", "/auth/config"}
+                         "/auth/me", "/auth/refresh", "/auth/config"}
 
 
 def require_api_key(request: Request,
@@ -89,7 +89,15 @@ def require_api_key(request: Request,
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
-app = FastAPI(title="Neuroshield API", dependencies=[Depends(require_api_key)])
+# Every /api/* request must also come from an active, signed-in user. The API
+# key above only says "this is our frontend"; it ships in a public bundle, so it
+# cannot say who is asking. The account is re-read from the database on every
+# request, which is what makes an approval or a removal take effect immediately.
+# `db` is defined further down; the lambda looks it up when a request arrives.
+require_user = shared_auth.user_dependency(lambda: db, app="readmissions")
+
+app = FastAPI(title="Neuroshield API",
+              dependencies=[Depends(require_api_key), Depends(require_user)])
 
 
 @app.get("/healthz")
@@ -116,11 +124,12 @@ def healthz():
 # from either product's own data. This service is the only thing that issues
 # tokens; each product verifies them independently. See api/auth.py.
 
+# Role and hospital are deliberately absent: a self-signup is always a pending
+# case_manager with no hospital, and an admin assigns both. Older portals still
+# send `role` and `org_name`; pydantic drops unknown fields, so they are ignored.
 class SignupRequest(BaseModel):
     email: str
     password: str
-    role: str
-    org_name: str = ""
 
 
 class LoginRequest(BaseModel):
@@ -130,9 +139,10 @@ class LoginRequest(BaseModel):
 
 @app.post("/auth/signup")
 def auth_signup(body: SignupRequest):
-    """Create an account and return a token for it, so signup lands the user
-    straight inside a product rather than back at the login form."""
-    return shared_auth.signup(db, body.email, body.password, body.role, body.org_name)
+    """Create a pending account and return a token for it. The portal uses the
+    token to show the "waiting for approval" screen; every data request made
+    with it is refused until an admin approves the account."""
+    return shared_auth.signup(db, body.email, body.password)
 
 
 @app.post("/auth/login")
@@ -143,13 +153,18 @@ def auth_login(body: LoginRequest):
 @app.get("/auth/me")
 def auth_me(authorization: Optional[str] = Header(default=None)):
     """Who the bearer of this token is, read back from the database rather than
-    from the token, so a role or access change takes effect without re-issuing."""
-    scheme, _, token = (authorization or "").partition(" ")
-    if scheme.lower() != "bearer" or not token.strip():
-        raise HTTPException(status_code=401,
-                            detail="Missing Authorization: Bearer <token> header")
-    claims = shared_auth.decode_token(token.strip())
-    return shared_auth.public_view(shared_auth.get_account(db, claims.get("sub")))
+    from the token, so a role or access change takes effect without re-issuing.
+    Answers for pending accounts too, so they can be told they are pending."""
+    account = shared_auth.authenticate(db, shared_auth.bearer_token(authorization),
+                                       allow_pending=True)
+    return shared_auth.public_view(account)
+
+
+@app.post("/auth/refresh")
+def auth_refresh(authorization: Optional[str] = Header(default=None)):
+    """A new token carrying the account's current role and status, with the
+    same expiry as the old one. See api/auth.py:refresh."""
+    return shared_auth.refresh(db, shared_auth.bearer_token(authorization))
 
 
 @app.get("/auth/config")

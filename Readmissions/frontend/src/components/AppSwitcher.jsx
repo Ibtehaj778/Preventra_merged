@@ -14,6 +14,12 @@ import { getToken, readClaims, signOut } from '../api/auth';
 // issued for them. Hiding a tile is a courtesy, not a control.
 const GLP1_URL = (import.meta.env.VITE_GLP1_URL || '').replace(/\/$/, '');
 
+// Display names for the fixed roles in api/auth.py:ROLES on the backend.
+const ROLE_LABELS = {
+  superadmin: 'Superadmin', hospital_admin: 'Hospital admin', doctor: 'Doctor',
+  nurse: 'Nurse', case_manager: 'Case manager', insurer: 'Insurer', patient: 'Patient',
+};
+
 export default function AppSwitcher({ onNavigate = () => {} }) {
   const token = getToken();
   const claims = readClaims();
@@ -23,8 +29,9 @@ export default function AppSwitcher({ onNavigate = () => {} }) {
   if (!token || !claims) return null;
 
   const granted = Array.isArray(claims.app_access) ? claims.app_access : [];
+  // No early return for accounts without GLP-1: they still need the account
+  // line and Sign out below, which live in this same panel.
   const hasGlp1 = granted.includes('glp1');
-  if (!hasGlp1) return null;
 
   const go = (base) => {
     onNavigate();
@@ -33,10 +40,12 @@ export default function AppSwitcher({ onNavigate = () => {} }) {
 
   return (
     <div className="border-t border-gray-700 p-4">
-      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-        <ArrowLeftRight size={14} />
-        Switch app
-      </div>
+      {hasGlp1 && (
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <ArrowLeftRight size={14} />
+          Switch app
+        </div>
+      )}
 
       {hasGlp1 && (
         <button
@@ -66,6 +75,7 @@ export default function AppSwitcher({ onNavigate = () => {} }) {
       {claims.email && (
         <div className="mt-3 truncate text-xs text-gray-400" title={claims.email}>
           {claims.email}
+          {ROLE_LABELS[claims.role] && <span className="text-gray-500"> · {ROLE_LABELS[claims.role]}</span>}
         </div>
       )}
 

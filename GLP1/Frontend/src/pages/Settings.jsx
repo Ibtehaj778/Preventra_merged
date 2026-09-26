@@ -50,7 +50,7 @@ function Collapsible({ title, children }) {
 }
 
 export default function Settings() {
-  const { role, setRole } = useRole();
+  const { roleLabel, isCostView } = useRole();
   const { data: modelInfo } = useModelInfo();
 
   const PERF_METRICS = [
@@ -171,35 +171,16 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ── Role & Preferences ───────────────────────────────── */}
+      {/* ── Role ─────────────────────────────────────────────── */}
       <div className="card p-6">
-        <div className="font-semibold text-gray-800 mb-1">Role & Preferences</div>
+        <div className="font-semibold text-gray-800 mb-1">Role</div>
         <div className="text-xs text-gray-400 mb-5">
-          Changes which panels are foregrounded across all screens. Persists for the session.
+          Assigned by your administrator. It decides which panels are foregrounded
+          and which data you can open; ask them if it needs to change.
         </div>
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-medium text-gray-700">Active Role</div>
-            <div className="text-xs text-gray-400 mt-0.5">
-              Currently viewing as: <b>{role === 'insurer' ? 'Insurer / Payer' : 'Clinician / Case Manager'}</b>
-            </div>
-          </div>
-          <div className="flex rounded-xl overflow-hidden border border-gray-200">
-            {[
-              { id: 'case_manager', label: 'Clinician', icon: Stethoscope },
-              { id: 'insurer',      label: 'Insurer',   icon: Building2   },
-            ].map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setRole(id)}
-                className="flex items-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors"
-                style={{
-                  background: role === id ? 'var(--color-primary)' : 'white',
-                  color:      role === id ? 'white' : '#4A5568',
-                }}>
-                <Icon size={13} />
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+          {isCostView ? <Building2 size={14} /> : <Stethoscope size={14} />}
+          {roleLabel}
         </div>
       </div>
     </div>

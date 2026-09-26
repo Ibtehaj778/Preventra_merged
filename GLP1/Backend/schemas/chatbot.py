@@ -11,7 +11,10 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages:     List[ChatMessage] = Field(..., min_length=1, max_length=40)
     session_id:   Optional[str] = None
-    role_context: Optional[Literal["insurer", "case_manager"]] = None
+    # Ignored. The audience now comes from the signed-in account (see
+    # routers/chatbot.py). Still accepted so an older frontend that sends it
+    # is not refused.
+    role_context: Optional[str] = None
 
 
 class ToolCallLog(BaseModel):

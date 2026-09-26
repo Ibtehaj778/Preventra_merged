@@ -183,7 +183,7 @@ function SortHeader({ label, sortKey: sk, currentSort, currentDir, onSort }) {
 /* ── Main Component ───────────────────────────────────────────────── */
 export default function PatientRiskPanel() {
   const navigate = useNavigate();
-  const { isInsurer } = useRole();
+  const { isCostView } = useRole();
   const { patients, loading } = usePatients();
   const [search, setSearch]           = useState('');
   const [segFilter, setSegFilter]     = useState('All');
@@ -303,13 +303,13 @@ export default function PatientRiskPanel() {
 
   return (
     <div className="risk-panel-page animate-fade-in">
-      {/* ── Insurer context banner ───────────────────────────────── */}
-      {isInsurer && (
+      {/* ── Finance-view context banner ──────────────────────────── */}
+      {isCostView && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 px-4 py-3 rounded-xl text-sm font-medium mb-4 animate-fade-up"
           style={{ background: '#EBF4FF', color: '#1B4F8A', border: '1px solid #BFDBFE' }}>
           <span className="flex items-center gap-2.5">
             <Building2 size={15} />
-            Insurer View — This panel is optimized for Case Managers. Individual patient data is available for reference.
+            Finance view — This panel is designed for the care team. Individual patient data is available for reference.
           </span>
           <div className="flex flex-wrap items-center gap-3 text-xs font-semibold flex-shrink-0">
             <Link to="/cost" className="hover:underline underline-offset-2" style={{ color: '#1B4F8A' }}>Cost-Effectiveness →</Link>

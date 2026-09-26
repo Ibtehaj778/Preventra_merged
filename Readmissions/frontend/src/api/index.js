@@ -1,5 +1,5 @@
 import * as MockAPI from './mock';
-import { getToken } from './auth';
+import { getToken, signOut } from './auth';
 
 // ─── Environment switch ────────────────────────────────────────────────────
 // Set VITE_USE_MOCK=true in .env to fall back to in-memory mock data.
@@ -19,14 +19,16 @@ async function apiFetch(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (API_KEY) headers['X-API-Key'] = API_KEY;
 
-  // Shared-login token, when the portal handed us one. Sent alongside the API
-  // key rather than instead of it: the key says "our frontend", the token says
-  // "this person". Absent when the dashboard is opened directly, which the
-  // backend still accepts.
+  // Shared-login token, handed over by the portal. Sent alongside the API key
+  // rather than instead of it: the key says "our frontend", the token says
+  // "this person". The backend refuses every /api call without it.
   const token = getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  // The session is over - the token expired or the account was removed. Send
+  // them to sign in again rather than leave a dashboard of failed requests.
+  if (res.status === 401) signOut();
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new Error(detail?.detail || `API error ${res.status}: ${path}`);

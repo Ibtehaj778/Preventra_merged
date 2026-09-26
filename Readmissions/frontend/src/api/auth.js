@@ -140,8 +140,10 @@ export function signOut() {
 export function requireSession() {
   if (!PORTAL_URL) return false;          // nowhere to send anyone; carry on
 
+  // A pending account also goes back: the portal shows it the "waiting for
+  // approval" screen. The backend refuses it data either way.
   const claims = readClaims();
-  if (claims && !isExpired(claims)) return false;
+  if (claims && !isExpired(claims) && claims.status !== 'pending') return false;
 
   clearToken();                            // expired tokens do not linger
   window.location.replace(PORTAL_URL);     // replace: Back must not return here

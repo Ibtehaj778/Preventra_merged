@@ -16,8 +16,12 @@ so those accounts keep working and nobody has to reset a password.
 
 Token claims, frozen by agreement between both products:
 
-    {"sub": "<users._id as a string>", "email": ..., "role": ...,
-     "org_id": ..., "app_access": ["glp1", "readmissions"], "exp": <unix>}
+    {"sub": "<users._id as a string>", "email": ..., "role": ..., "status": ...,
+     "hospital_id": ..., "app_access": ["glp1", "readmissions"], "exp": <unix>}
+
+The claims are for display only. Both backends re-read the account on every
+request (see `authenticate`), so an approval, a role change or a removal takes
+effect on the next request, not when the token runs out.
 """
 from __future__ import annotations
 
@@ -32,7 +36,7 @@ import jwt
 from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
-from fastapi import HTTPException
+from fastapi import Header, HTTPException, Request
 
 # Loaded here rather than left to the importer: api.main calls load_dotenv()
 # after importing this module, so without this the secret below reads as empty
@@ -61,6 +65,36 @@ DEFAULT_APP_ACCESS = [a.strip() for a in
 
 IDENTITY_DB = os.environ.get("SHARED_IDENTITY_DB", "shared_identity")
 USERS_COLLECTION = "users"
+
+# ------------------------------------------------------------------------ roles
+# The complete list. Every account has exactly one, and the same strings are
+# used in the database, the token, both backends and both frontends. GLP-1 keeps
+# a copy in GLP1/Backend/core/security.py that must stay identical to this one.
+ROLES = ("superadmin", "hospital_admin", "doctor", "nurse", "case_manager",
+         "insurer", "patient")
+STATUSES = ("pending", "active")
+
+# What a self-signup becomes. It also sees nothing until an admin approves it
+# and attaches it to a hospital.
+DEFAULT_ROLE = "case_manager"
+
+# Roles that work for one hospital. superadmin belongs to none, because it
+# oversees all of them; insurer belongs to an insurer organisation instead.
+HOSPITAL_ROLES = ("hospital_admin", "doctor", "nurse", "case_manager", "patient")
+
+# Enforced by the database itself once scripts/migrate_user_roles.py has run, so
+# a bad write fails even if it comes from code that skipped this module.
+USERS_VALIDATOR = {"$jsonSchema": {
+    "bsonType": "object",
+    "required": ["email", "password_hash", "role", "status"],
+    "properties": {
+        "email": {"bsonType": "string"},
+        "password_hash": {"bsonType": "string"},
+        "role": {"enum": list(ROLES)},
+        "status": {"enum": list(STATUSES)},
+        "hospital_id": {"bsonType": ["string", "null"]},
+    },
+}}
 
 BCRYPT_ROUNDS = 12
 MIN_PASSWORD_LENGTH = 8
@@ -137,26 +171,47 @@ def _require_secret() -> None:
             detail="SHARED_SECRET_KEY is not configured; this service cannot issue tokens")
 
 
+def effective(account: dict) -> dict:
+    """The account's role, status and hospital as the rest of the system must
+    treat them.
+
+    An account without a `status` field predates fixed roles. Its `role` is
+    whatever its owner typed at signup, and the old signup accepted any string -
+    so a stored "superadmin" proves nothing. Such accounts are read as an active
+    case_manager with no hospital, which is also what the backfill script writes.
+    """
+    if account.get("status") not in STATUSES or account.get("role") not in ROLES:
+        role, status, hospital_id = DEFAULT_ROLE, "active", None
+    else:
+        role, status, hospital_id = account["role"], account["status"], account.get("hospital_id")
+    return {**account, "role": role, "status": status, "hospital_id": hospital_id,
+            # Older accounts predate this field; treat them as having the default
+            # rather than locking their owners out of both products.
+            "app_access": account.get("app_access") or list(DEFAULT_APP_ACCESS)}
+
+
 # ----------------------------------------------------------------- token issue
-def issue_token(user: dict) -> dict:
-    """Sign a token for an account and return it with the claims it carries."""
+def issue_token(user: dict, exp: Optional[int] = None) -> dict:
+    """Sign a token for an account and return it with the claims it carries.
+
+    `exp` keeps an existing expiry when re-issuing, so refreshing the claims
+    never stretches a session past its original length."""
     _require_secret()
+    user = effective(user)
+    expires_at = exp if exp is not None else int(time.time()) + TOKEN_TTL_SECONDS
     claims = {
         "sub": str(user["_id"]),
         "email": user["email"],
-        "role": user.get("role", ""),
-        "org_id": user.get("org_id", ""),
-        # Older accounts predate this field; treat them as having the default
-        # rather than locking their owners out of both products.
-        "app_access": user.get("app_access") or list(DEFAULT_APP_ACCESS),
-        "exp": int(time.time()) + TOKEN_TTL_SECONDS,
+        "role": user["role"],
+        "status": user["status"],
+        "hospital_id": user["hospital_id"],
+        "app_access": user["app_access"],
+        "exp": expires_at,
     }
     return {"token": jwt.encode(claims, SHARED_SECRET_KEY, algorithm=ALGORITHM),
             "token_type": "bearer",
-            "expires_in": TOKEN_TTL_SECONDS,
-            "user": {"sub": claims["sub"], "email": claims["email"], "role": claims["role"],
-                     "org_id": claims["org_id"], "org_name": user.get("org_name", ""),
-                     "app_access": claims["app_access"]}}
+            "expires_in": max(0, expires_at - int(time.time())),
+            "user": public_view(user)}
 
 
 def decode_token(token: str) -> dict:
@@ -172,29 +227,36 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 
-# ----------------------------------------------------------------------- signup
-def signup(db, email: str, password: str, role: str, org_name: str,
-           app_access: Optional[list] = None) -> dict:
-    """Create an account and return a signed token for it.
-
-    No email verification and no domain checks, by decision: the demo needs
-    someone to be able to sign up and be inside the product seconds later.
-    """
+def _validate_credentials(email: str, password: str) -> str:
     email = normalise_email(email)
     if not _EMAIL_RE.match(email):
         raise HTTPException(status_code=422, detail="A valid email address is required")
     if len(password or "") < MIN_PASSWORD_LENGTH:
         raise HTTPException(status_code=422,
                             detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
-    if not (role or "").strip():
-        raise HTTPException(status_code=422, detail="Role is required")
+    return email
 
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+def _now() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+
+# ----------------------------------------------------------------------- signup
+def signup(db, email: str, password: str, app_access: Optional[list] = None) -> dict:
+    """Create a self-service account and return a signed token for it.
+
+    The account is a pending case_manager with no hospital. Nobody chooses their
+    own role or hospital: typing a hospital's name must not be enough to see its
+    patients. An admin approves the account and attaches it to a hospital; until
+    then it can sign in, but every data request is refused.
+    """
+    email = _validate_credentials(email, password)
+    now = _now()
     doc = {"email": email,
            "password_hash": hash_password(password),
-           "role": role.strip(),
-           "org_name": (org_name or "").strip(),
-           "org_id": slugify_org(org_name),
+           "role": DEFAULT_ROLE,
+           "status": "pending",
+           "hospital_id": None,
            "app_access": list(app_access) if app_access else list(DEFAULT_APP_ACCESS),
            "created_at": now,
            "updated_at": now}
@@ -234,12 +296,107 @@ def get_account(db, sub: str) -> dict:
     return account
 
 
+# ------------------------------------------------------------ who is this user
+def bearer_token(authorization: Optional[str]) -> str:
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401,
+                            detail="Missing Authorization: Bearer <token> header")
+    return token.strip()
+
+
+def authenticate(db, token: str, allow_pending: bool = False,
+                 app: Optional[str] = None) -> dict:
+    """The account behind a token, read from the database on every call.
+
+    The token only proves who someone is. What they may do comes from the
+    current record, which is why an approval, a role change or a deleted account
+    takes effect on the very next request.
+    """
+    account = effective(get_account(db, decode_token(token).get("sub")))
+    if account["status"] != "active" and not allow_pending:
+        raise HTTPException(status_code=403,
+                            detail="This account is waiting for approval by an administrator")
+    if app and app not in account["app_access"]:
+        raise HTTPException(status_code=403, detail=f"This account does not have access to {app}")
+    return account
+
+
+def user_dependency(get_db, app: str, protected_prefix: str = "/api/"):
+    """A FastAPI dependency that admits only active users to `protected_prefix`.
+
+    Built as a factory so the service passes its own database handle, and a test
+    can build the same guard around a mongomock one. The account is left on
+    `request.state.user` for the handlers that later filter by hospital and role.
+    """
+    def require_user(request: Request,
+                     authorization: Optional[str] = Header(default=None)):
+        if not request.url.path.startswith(protected_prefix):
+            return None
+        account = authenticate(get_db(), bearer_token(authorization), app=app)
+        request.state.user = account
+        return account
+    return require_user
+
+
+def refresh(db, token: str) -> dict:
+    """Re-issue a token carrying the account's current claims.
+
+    The portal calls this before deciding what to show, so a user approved since
+    they last signed in sees their apps without signing in again. The expiry is
+    kept, so this cannot be used to stay signed in indefinitely."""
+    claims = decode_token(token)
+    account = authenticate(db, token, allow_pending=True)
+    return issue_token(account, exp=claims["exp"])
+
+
 def public_view(account: dict) -> dict:
     """An account as the portal may see it. Never includes the password hash."""
+    account = effective(account)
     return {"sub": str(account["_id"]), "email": account.get("email", ""),
-            "role": account.get("role", ""), "org_id": account.get("org_id", ""),
-            "org_name": account.get("org_name", ""),
-            "app_access": account.get("app_access") or list(DEFAULT_APP_ACCESS)}
+            "role": account["role"], "status": account["status"],
+            "hospital_id": account["hospital_id"],
+            "app_access": account["app_access"]}
+
+
+# --------------------------------------------------------- operator-only paths
+# Neither of these is reachable over HTTP. They are what the scripts in
+# scripts/ call, run by someone with direct access to the cluster.
+def bootstrap_superadmin(db, email: str, password: Optional[str] = None) -> dict:
+    """Create a superadmin, or promote an existing account to one.
+
+    The only way a superadmin comes into existence: no endpoint can grant the
+    role, so no hospital admin can create one or promote anyone to it. A password
+    is required for a new account and optional when promoting an existing one.
+    """
+    email = normalise_email(email)
+    existing = users(db).find_one({"email": email})
+    now = _now()
+    promote = {"role": "superadmin", "status": "active", "hospital_id": None,
+               "app_access": list(DEFAULT_APP_ACCESS), "updated_at": now}
+    if existing:
+        if password:
+            _validate_credentials(email, password)
+            promote["password_hash"] = hash_password(password)
+        users(db).update_one({"_id": existing["_id"]}, {"$set": promote})
+        return {**existing, **promote}
+    _validate_credentials(email, password)
+    doc = {"email": email, "password_hash": hash_password(password),
+           **promote, "created_at": now}
+    doc["_id"] = users(db).insert_one(doc).inserted_id
+    return doc
+
+
+def backfill_users(db) -> int:
+    """Rewrite accounts that predate fixed roles as an active case_manager with
+    no hospital - the same reading `effective` already gives them - so the
+    stricter database validator can be switched on. Returns how many changed."""
+    legacy = {"$or": [{"status": {"$nin": list(STATUSES)}},
+                      {"role": {"$nin": list(ROLES)}}]}
+    result = users(db).update_many(legacy, {"$set": {
+        "role": DEFAULT_ROLE, "status": "active", "hospital_id": None,
+        "updated_at": _now()}})
+    return result.modified_count
 
 
 def auth_config() -> dict:
@@ -247,4 +404,4 @@ def auth_config() -> dict:
     never the secret itself, so a broken deploy can be diagnosed over HTTP."""
     return {"secret_configured": bool(SHARED_SECRET_KEY), "algorithm": ALGORITHM,
             "identity_database": IDENTITY_DB, "token_ttl_seconds": TOKEN_TTL_SECONDS,
-            "default_app_access": list(DEFAULT_APP_ACCESS)}
+            "default_app_access": list(DEFAULT_APP_ACCESS), "roles": list(ROLES)}

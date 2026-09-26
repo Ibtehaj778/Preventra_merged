@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 
 import core.model as model
 from core.mongo import get_db
-from core.security import verify_token
+from core.security import current_user
 from schemas.patient_views import PatientPharmacyView
 
 router = APIRouter()
@@ -94,7 +94,7 @@ async def get_patients(
     sort_by:        str             = Query("dropout_prob"),
     sort_dir:       str             = Query("desc"),
     search:         Optional[str]   = Query(None),
-    claims:         dict            = Depends(verify_token),
+    user:           dict            = Depends(current_user),
 ):
     db = get_db()
     match = _build_match(segment, molecule, min_risk, prediction, financial_only, search)
@@ -128,7 +128,7 @@ async def get_patients(
 
 
 @router.get("/patients/{patient_idx}")
-async def get_patient(patient_idx: int, claims: dict = Depends(verify_token)):
+async def get_patient(patient_idx: int, user: dict = Depends(current_user)):
     db = get_db()
     doc = await db.patients.find_one({"patient_idx": patient_idx}, {"_id": 0})
     if doc is None:
@@ -165,7 +165,7 @@ async def get_patient(patient_idx: int, claims: dict = Depends(verify_token)):
     }
     
 @router.get("/patients/{patient_idx}/pharmacy-view", response_model=PatientPharmacyView)
-async def get_patient_pharmacy_view(patient_idx: int, claims: dict = Depends(verify_token)):
+async def get_patient_pharmacy_view(patient_idx: int, user: dict = Depends(current_user)):
     db = get_db()
     doc = await db.patients.find_one({"patient_idx": patient_idx}, {"_id": 0})
     if doc is None:

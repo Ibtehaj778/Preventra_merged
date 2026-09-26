@@ -138,7 +138,7 @@ function DriverCard({ rank, driver, direction, shap }) {
 export default function PatientDetail() {
   const { id }   = useParams();
   const navigate = useNavigate();
-  const { isInsurer } = useRole();
+  const { isCostView } = useRole();
   const { data: patientData } = usePatient(id);
   const { data: survivalData } = useSurvival();
 
@@ -176,13 +176,13 @@ export default function PatientDetail() {
         <ArrowLeft size={16} /> Back to Patient Risk Panel
       </button>
 
-      {/* ── Insurer context banner ───────────────────────────────── */}
-      {isInsurer && (
+      {/* ── Finance-view context banner ──────────────────────────── */}
+      {isCostView && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium mb-5 animate-fade-up"
           style={{ background: '#EBF4FF', color: '#1B4F8A', border: '1px solid #BFDBFE' }}>
           <span className="flex items-center gap-2.5">
             <Building2 size={15} />
-            Insurer View — Individual patient detail is a Case Manager tool. Population-level analysis is in the financial screens.
+            Finance view — Individual patient detail is a care team tool. Population-level analysis is in the financial screens.
           </span>
           <div className="flex items-center gap-3 text-xs font-semibold flex-shrink-0">
             <Link to="/cost"   className="hover:underline underline-offset-2" style={{ color: '#1B4F8A' }}>Cost-Effectiveness →</Link>

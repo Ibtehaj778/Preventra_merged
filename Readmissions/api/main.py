@@ -24,6 +24,7 @@ from api import doctor_service
 from api.db_utils import get_db_name, get_latest_batch_date, get_mongo_client
 from api import auth as shared_auth
 from api import user_admin
+from api import access
 from api.chatbot_service import answer_question
 from api.chatbot_queries import _patient_id_filter
 from api.gemini_insights import generate_roi_and_counterfactual, generate_week_narrative
@@ -326,6 +327,32 @@ shared_auth.ensure_indexes(db)
 
 
 # ---------------------------------------------------------------------------
+# Whose patients this request may touch - see api/access.py
+# ---------------------------------------------------------------------------
+# require_user has already put the signed-in account on request.state.user for
+# every /api route. The scope is worked out once per request and reused.
+def _scope(request: Request):
+    if not hasattr(request.state, "scope"):
+        request.state.scope = access.patient_scope(db, request.state.user)
+    return request.state.scope
+
+
+def _require_patient(request: Request, patient_id) -> None:
+    """404 unless this patient is one the caller may see."""
+    access.require_patient(_scope(request), patient_id)
+
+
+def _require(request: Request, action: str) -> None:
+    """403 unless the caller's role may take this kind of action."""
+    access.require(request.state.user, action)
+
+
+def _view(request: Request) -> access.ScopedDB:
+    """The database as this caller may read it."""
+    return access.ScopedDB(db, request.state.user, _scope(request))
+
+
+# ---------------------------------------------------------------------------
 # Drivers format mapping
 # ---------------------------------------------------------------------------
 
@@ -543,7 +570,8 @@ def _diagnosis_list(row: dict) -> list:
 
 
 @app.get("/api/patients")
-def get_patients(page: int = Query(1, ge=1),
+def get_patients(request: Request,
+                 page: int = Query(1, ge=1),
                  limit: int = Query(200, ge=1, le=5000),
                  group: Optional[str] = Query(None, description="clinical group key(s), comma separated"),
                  match: str = Query("any", description="any | all - how to combine several groups"),
@@ -569,7 +597,9 @@ def get_patients(page: int = Query(1, ge=1),
     if not batch_date:
         raise HTTPException(status_code=404, detail="Patient worklist data not found")
 
-    query: dict = {"batch_date": batch_date}
+    # Only the caller's patients. Part of the query itself, so the count cache
+    # below - keyed by the query - can never hand one account another's total.
+    query: dict = {"batch_date": batch_date, **access.scope_query(_scope(request))}
     # Conditions are matched on clinical_groups - every condition the patient
     # has - not clinical_group, which is only the plan they are monitored
     # under. Filtering on the plan hid a diabetic heart failure patient from
@@ -673,7 +703,7 @@ def get_patients(page: int = Query(1, ge=1),
 
 
 @app.get("/api/patient-groups")
-def get_patient_groups():
+def get_patient_groups(request: Request):
     """
     Which conditions are present in the current batch, and how many patients
     each covers. Drives the dashboard's condition filter, so the list offers
@@ -691,7 +721,7 @@ def get_patient_groups():
     #
     # The counts therefore sum to more than the cohort. That is correct: a
     # patient with heart failure and diabetes is one patient in two conditions.
-    rows = db["patient_worklist"].aggregate([
+    rows = _view(request)["patient_worklist"].aggregate([
         {"$match": {"batch_date": batch_date}},
         {"$unwind": "$clinical_groups"},
         {"$group": {"_id": "$clinical_groups", "count": {"$sum": 1}}},
@@ -705,15 +735,17 @@ def get_patient_groups():
 
 
 @app.post("/api/cache/clear")
-def clear_cache():
+def clear_cache(request: Request):
     """Drop the short-lived caches, so a freshly loaded batch appears at once."""
+    _require(request, "clear_cache")
     n = len(_cache)
     _cache.clear()
     return {"cleared": n}
 
 
 @app.get("/api/patients/{patient_id}")
-def get_patient(patient_id: str):
+def get_patient(patient_id: str, request: Request):
+    _require_patient(request, patient_id)
     batch_date = get_latest_batch_date(db, "patient_worklist")
     if not batch_date:
         raise HTTPException(status_code=404, detail="Patient worklist data not found")
@@ -1214,7 +1246,8 @@ _WEEKLY_STATUS_ACTIONS = {
 
 
 @app.get("/api/patients/{patient_id}/trend")
-def get_patient_trend(patient_id: str):
+def get_patient_trend(patient_id: str, request: Request):
+    _require_patient(request, patient_id)
     """Weekly readmission-risk trend for one patient: one point per batch run,
     with that week's drivers and an overall stability/deterioration verdict."""
     # Post-discharge weekly monitoring takes precedence: it is the series this
@@ -1371,7 +1404,7 @@ class AIInsightsRequest(BaseModel):
 
 
 @app.post("/api/ai-insights")
-def get_ai_insights(payload: AIInsightsRequest):
+def get_ai_insights(payload: AIInsightsRequest, request: Request):
     """
     ROI for enrolling this patient in a care-coordination intervention, plus a
     counterfactual risk explanation.
@@ -1381,6 +1414,7 @@ def get_ai_insights(payload: AIInsightsRequest):
     auditable. Gemini is given that breakdown and writes only the narrative
     around it — it no longer prices anything or does the arithmetic.
     """
+    _require_patient(request, payload.patient_id)
     roi = compute_roi(payload.risk_score, trend_status=payload.trend_status)
     try:
         narrative = generate_roi_and_counterfactual(
@@ -1428,11 +1462,12 @@ class WeekNarrativeRequest(BaseModel):
 
 
 @app.post("/api/week-narrative")
-def get_week_narrative(payload: WeekNarrativeRequest):
+def get_week_narrative(payload: WeekNarrativeRequest, request: Request):
     """On-demand Gemini call: narrate why one admission's score in the trend
     series is where it is, using that admission's drivers, its delta from the
     previous admission, and the elapsed time between the two. Triggered per
     point from the risk trend module."""
+    _require_patient(request, payload.patient_id)
     try:
         narrative = generate_week_narrative(
             patient_id=payload.patient_id,
@@ -1481,10 +1516,12 @@ class ChatbotQueryRequest(BaseModel):
 
 
 @app.post("/api/chatbot/query")
-def chatbot_query(payload: ChatbotQueryRequest):
+def chatbot_query(payload: ChatbotQueryRequest, request: Request):
+    # The chatbot reads through the caller's view of the database, so every
+    # question - however it is phrased - is answered from their patients only.
     try:
         answer = answer_question(
-            payload.question, db,
+            payload.question, _view(request),
             history=[m.model_dump() for m in payload.history])
     except Exception as exc:
         print(f"[chatbot] unexpected error handling question: {exc}")
@@ -1496,50 +1533,65 @@ def chatbot_query(payload: ChatbotQueryRequest):
 # Summary
 # ---------------------------------------------------------------------------
 
-@app.get("/api/summary")
-def get_summary():
-    doc = db["executive_summary"].find_one(
-        sort=[("batch_date", DESCENDING)],
-        projection={"_id": 0},
-    )
-    if not doc:
-        raise HTTPException(status_code=404, detail="Executive summary data not found")
+def _batch_dates() -> list:
+    """Every batch in the worklist, oldest first. Dates only - no patient data."""
+    return sorted(d for d in db["patient_worklist"].distinct("batch_date") if d)
 
-    try:
-        wow_raw = doc.get("wow_change", "0")
-        high_delta = int(float(str(wow_raw).replace("+", ""))) if wow_raw not in ("N/A", None, "") else 0
-    except (ValueError, TypeError):
-        high_delta = 0
+
+def _band_counts(request: Request, batch_date: str) -> dict:
+    """The caller's patients in one batch, counted by discharge band - the same
+    field the stored executive_summary counts, so the superadmin's figures are
+    unchanged and everyone else's cover only their own patients."""
+    rows = _view(request)["patient_worklist"].aggregate([
+        {"$match": {"batch_date": batch_date}},
+        {"$group": {"_id": "$risk_band", "n": {"$sum": 1}}},
+    ])
+    counts: dict = {}
+    for r in rows:
+        band = str(r["_id"] or "").capitalize()
+        counts[band] = counts.get(band, 0) + r["n"]
+    return counts
+
+
+@app.get("/api/summary")
+def get_summary(request: Request):
+    # Worked out from the caller's own patients rather than read from the
+    # stored executive_summary, which covers every hospital at once.
+    dates = _batch_dates()
+    if not dates:
+        raise HTTPException(status_code=404, detail="Executive summary data not found")
+    counts = _band_counts(request, dates[-1])
+    previous = _band_counts(request, dates[-2]) if len(dates) > 1 else None
+    high_delta = counts.get("High", 0) - previous.get("High", 0) if previous else 0
 
     return {
-        "batch_date": doc.get("batch_date", ""),
-        "total_patients": int(doc.get("total_patients", 0)),
-        "high_count": int(doc.get("high_count", 0)),
-        "medium_count": int(doc.get("medium_count", 0)),
-        "low_count": int(doc.get("low_count", 0)),
+        "batch_date": dates[-1],
+        "total_patients": sum(counts.values()),
+        "high_count": counts.get("High", 0),
+        "medium_count": counts.get("Medium", 0),
+        "low_count": counts.get("Low", 0),
         "high_delta": high_delta,
     }
 
 
 @app.get("/api/summary/history")
-def get_summary_history():
-    docs = list(
-        db["executive_summary"]
-        .find({}, {"_id": 0, "batch_date": 1, "high_count": 1})
-        .sort("batch_date", DESCENDING)
-        .limit(8)
-    )
-    docs = list(reversed(docs))
+def get_summary_history(request: Request):
+    dates = _batch_dates()[-8:]
+    rows = _view(request)["patient_worklist"].aggregate([
+        {"$match": {"batch_date": {"$in": dates},
+                    "risk_band": {"$in": ["High", "high", "HIGH"]}}},
+        {"$group": {"_id": "$batch_date", "n": {"$sum": 1}}},
+    ])
+    high_by_date = {r["_id"]: r["n"] for r in rows}
 
     history = []
-    for doc in docs:
-        date_str = doc.get("batch_date", "")
+    for date_str in dates:
         try:
             dt = datetime.strptime(date_str, "%Y-%m-%d")
             label = f"{dt.month}/{dt.day}"
         except ValueError:
             label = date_str
-        history.append({"week_label": label, "high_count": int(doc.get("high_count", 0))})
+        history.append({"week_label": label, "high_count": high_by_date.get(date_str, 0)})
 
     # Pad to at least 2 points so charts render
     if len(history) < 2:
@@ -1678,13 +1730,22 @@ def _run_pipeline_task(run_id: str, filepath: str):
     run["status"] = "Completed"
 
 
+def _visible_runs(request: Request) -> list:
+    """Upload runs from the caller's own hospital; every run for the superadmin."""
+    user = request.state.user
+    if user["role"] == "superadmin":
+        return _pipeline_runs
+    return [r for r in _pipeline_runs if r.get("hospital_id") == user.get("hospital_id")]
+
+
 @app.get("/api/pipeline/runs")
-def get_pipeline_runs():
-    return list(reversed(_pipeline_runs))
+def get_pipeline_runs(request: Request):
+    return list(reversed(_visible_runs(request)))
 
 
 @app.post("/api/pipeline/upload")
-async def upload_pipeline_file(file: UploadFile = File(...)):
+async def upload_pipeline_file(request: Request, file: UploadFile = File(...)):
+    _require(request, "add_patients")
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Only .csv files are accepted.")
 
@@ -1702,6 +1763,7 @@ async def upload_pipeline_file(file: UploadFile = File(...)):
         "patient_count": 0,
         "status": "Running",
         "current_step": "file_received",
+        "hospital_id": request.state.user.get("hospital_id"),
     }
     _pipeline_runs.append(run_record)
 
@@ -1712,8 +1774,8 @@ async def upload_pipeline_file(file: UploadFile = File(...)):
 
 
 @app.get("/api/pipeline/status/{run_id}")
-def get_pipeline_status(run_id: str):
-    run = next((r for r in _pipeline_runs if r["id"] == run_id), None)
+def get_pipeline_status(run_id: str, request: Request):
+    run = next((r for r in _visible_runs(request) if r["id"] == run_id), None)
     if not run:
         raise HTTPException(status_code=404, detail="Pipeline run not found")
     return run
@@ -1856,7 +1918,8 @@ def get_manual_entry_schema():
         raise HTTPException(status_code=503, detail=f"Schema unavailable: {exc}")
 
 @app.post("/api/patients/predict", dependencies=[Depends(require_manual_entry)])
-def predict_patient(payload: ManualPatientInput):
+def predict_patient(payload: ManualPatientInput, request: Request):
+    _require(request, "add_patients")
     scored = _score_manual_input(payload)
     discharge_date = payload.discharge_date or datetime.now().strftime("%Y-%m-%d")
     patient_id = f"MANUAL-{int(datetime.now().timestamp())}"
@@ -1869,7 +1932,7 @@ def predict_patient(payload: ManualPatientInput):
 
 
 @app.post("/api/patients/worklist-add", dependencies=[Depends(require_manual_entry)])
-def add_to_worklist(payload: WorklistSaveRequest):
+def add_to_worklist(payload: WorklistSaveRequest, request: Request):
     """
     Persist a manually scored patient into patient_worklist and update
     executive_summary counts (total_patients + the relevant band count).
@@ -1878,6 +1941,15 @@ def add_to_worklist(payload: WorklistSaveRequest):
     (e.g. re-submitted), the old band count is decremented and the new one
     incremented so totals stay accurate.
     """
+    _require(request, "add_patients")
+    # The id comes from the browser. If it already names a patient the caller
+    # cannot see - another hospital's, or an unowned legacy record - refuse
+    # with the same 404 as for any unseen patient rather than overwrite it.
+    known = (db["care_actions"].find_one(_patient_id_filter(payload.patient_id), {"_id": 1})
+             or db["patient_worklist"].find_one(_patient_id_filter(payload.patient_id), {"_id": 1}))
+    if known:
+        _require_patient(request, payload.patient_id)
+
     batch_date = get_latest_batch_date(db, "patient_worklist")
     if not batch_date:
         batch_date = datetime.now().strftime("%Y-%m-%d")
@@ -1933,6 +2005,17 @@ def add_to_worklist(payload: WorklistSaveRequest):
             {"$inc": summary_delta},
         )
 
+    # A new patient belongs to the hospital of whoever added it; without an
+    # ownership record nobody but the superadmin could see it (api/access.py).
+    db["care_actions"].update_one(
+        _patient_id_filter(payload.patient_id),
+        {"$setOnInsert": {"patient_id": payload.patient_id, "notes": [],
+                          "coordinator_name": None, "assigned_at": None,
+                          "assigned_nurse_ids": [],
+                          "hospital_id": request.state.user.get("hospital_id")}},
+        upsert=True,
+    )
+
     return {
         "status":     "added",
         "patient_id": payload.patient_id,
@@ -1961,9 +2044,10 @@ class UpdateCommitRequest(BaseModel):
 
 
 @app.get("/api/patients/{patient_id}/edit")
-def get_patient_for_edit(patient_id: str):
+def get_patient_for_edit(patient_id: str, request: Request):
     """Return a patient's stored raw_inputs (prefilled with defaults for any
     missing field) plus their current risk_score/band, for the Update Patient form."""
+    _require_patient(request, patient_id)
     batch_date = get_latest_batch_date(db, "patient_worklist")
     if not batch_date:
         raise HTTPException(status_code=404, detail="Patient worklist data not found")
@@ -1988,8 +2072,10 @@ def get_patient_for_edit(patient_id: str):
 
 
 @app.post("/api/patients/{patient_id}/predict-update")
-def predict_patient_update(patient_id: str, payload: ManualPatientInput):
+def predict_patient_update(patient_id: str, payload: ManualPatientInput, request: Request):
     """Recompute risk_score/band/drivers for an edited patient. Preview only — does NOT persist."""
+    _require_patient(request, patient_id)
+    _require(request, "edit_patients")
     scored = _score_manual_input(payload)
     discharge_date = payload.discharge_date or datetime.now().strftime("%Y-%m-%d")
 
@@ -2001,12 +2087,14 @@ def predict_patient_update(patient_id: str, payload: ManualPatientInput):
 
 
 @app.post("/api/patients/{patient_id}/update")
-def commit_patient_update(patient_id: str, payload: UpdateCommitRequest):
+def commit_patient_update(patient_id: str, payload: UpdateCommitRequest, request: Request):
     """
     Persist a recalculated score for an existing patient, update executive_summary
     band counts, and raise an alert if the new score represents a meaningful
     increase over the previous one (15+ points, or a jump to a higher risk band).
     """
+    _require_patient(request, patient_id)
+    _require(request, "edit_patients")
     batch_date = get_latest_batch_date(db, "patient_worklist")
     if not batch_date:
         batch_date = datetime.now().strftime("%Y-%m-%d")
@@ -2079,10 +2167,10 @@ def commit_patient_update(patient_id: str, payload: UpdateCommitRequest):
 
 
 @app.get("/api/alerts")
-def get_alerts():
+def get_alerts(request: Request):
     """Unacknowledged risk-increase alerts, newest first."""
     docs = list(
-        db["alerts"]
+        _view(request)["alerts"]
         .find({"acknowledged": False})
         .sort("triggered_at", DESCENDING)
     )
@@ -2092,15 +2180,18 @@ def get_alerts():
 
 
 @app.post("/api/alerts/{alert_id}/acknowledge")
-def acknowledge_alert(alert_id: str):
+def acknowledge_alert(alert_id: str, request: Request):
+    _require(request, "respond_alerts")
     try:
         oid = ObjectId(alert_id)
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid alert id")
 
-    result = db["alerts"].update_one({"_id": oid}, {"$set": {"acknowledged": True}})
-    if result.matched_count == 0:
+    # Looked up through the caller's view: an alert about someone else's
+    # patient is "not found", exactly like one that does not exist.
+    if not _view(request)["alerts"].find_one({"_id": oid}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Alert not found")
+    db["alerts"].update_one({"_id": oid}, {"$set": {"acknowledged": True}})
     return {"status": "acknowledged", "id": alert_id}
 
 
@@ -2121,7 +2212,9 @@ class AddNoteRequest(BaseModel):
 
 
 @app.post("/api/patients/{patient_id}/assign")
-def assign_coordinator(patient_id: str, payload: AssignCoordinatorRequest):
+def assign_coordinator(patient_id: str, payload: AssignCoordinatorRequest, request: Request):
+    _require_patient(request, patient_id)
+    _require(request, "assign")
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     fields = {
         "patient_id": patient_id,
@@ -2132,7 +2225,7 @@ def assign_coordinator(patient_id: str, payload: AssignCoordinatorRequest):
         # An empty string clears the assignment and lets routing fall back to
         # the condition rules, which is the only way to undo a named clinician.
         doctor_id = payload.doctor_id.strip()
-        if doctor_id and not doctor_service.get_doctor(db, doctor_id):
+        if doctor_id and not _view(request)["doctors"].find_one({"doctor_id": doctor_id}):
             raise HTTPException(status_code=404, detail="Doctor not found")
         fields["assigned_doctor_id"] = doctor_id or None
 
@@ -2147,7 +2240,9 @@ def assign_coordinator(patient_id: str, payload: AssignCoordinatorRequest):
 
 
 @app.post("/api/patients/{patient_id}/notes")
-def add_care_note(patient_id: str, payload: AddNoteRequest):
+def add_care_note(patient_id: str, payload: AddNoteRequest, request: Request):
+    _require_patient(request, patient_id)
+    _require(request, "add_notes")
     note = {
         "text": payload.text,
         "author": payload.author,
@@ -2165,7 +2260,8 @@ def add_care_note(patient_id: str, payload: AddNoteRequest):
 
 
 @app.get("/api/patients/{patient_id}/care-actions")
-def get_care_actions(patient_id: str):
+def get_care_actions(patient_id: str, request: Request):
+    _require_patient(request, patient_id)
     doc = db["care_actions"].find_one(_patient_id_filter(patient_id), {"_id": 0})
     if not doc:
         return {"patient_id": patient_id, "coordinator_name": None, "assigned_at": None, "notes": []}
@@ -2312,18 +2408,32 @@ def mimic_scoring_bands() -> dict:
 # ---- registry -------------------------------------------------------------
 
 @app.post("/api/doctors")
-def register_doctor(payload: RegisterDoctorRequest):
+def register_doctor(payload: RegisterDoctorRequest, request: Request):
+    _require(request, "manage_doctors")
+    # The registry is keyed by email, and registering an existing email updates
+    # that entry - so an email already registered in another hospital must be
+    # refused, not quietly rewritten from here.
+    email = (payload.email or "").strip().lower()
+    if (db["doctors"].find_one({"email": email}, {"_id": 1})
+            and not _view(request)["doctors"].find_one({"email": email}, {"_id": 1})):
+        raise HTTPException(status_code=409, detail="That email is registered to another hospital")
     try:
-        return doctor_service.register_doctor(
+        doctor = doctor_service.register_doctor(
             db, payload.name, payload.specialty, payload.email, payload.clinical_groups)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    hospital = request.state.user.get("hospital_id")
+    if hospital:
+        db["doctors"].update_one({"doctor_id": doctor["doctor_id"]},
+                                 {"$set": {"hospital_id": hospital}})
+        doctor = {**doctor, "hospital_id": hospital}
+    return doctor
 
 
 @app.get("/api/doctors")
-def get_doctors(include_inactive: bool = False):
+def get_doctors(request: Request, include_inactive: bool = False):
     return {
-        "doctors": doctor_service.list_doctors(db, active_only=not include_inactive),
+        "doctors": doctor_service.list_doctors(_view(request), active_only=not include_inactive),
         "specialties": sorted(set(doctor_service.SPECIALTY_FOR_GROUP.values())),
         "clinical_groups": [{"key": k, "label": GROUP_LABELS.get(k, k),
                              "specialty": v}
@@ -2332,15 +2442,18 @@ def get_doctors(include_inactive: bool = False):
 
 
 @app.get("/api/doctors/{doctor_id}")
-def get_one_doctor(doctor_id: str):
-    doctor = doctor_service.get_doctor(db, doctor_id)
+def get_one_doctor(doctor_id: str, request: Request):
+    doctor = doctor_service.get_doctor(_view(request), doctor_id)
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
     return doctor
 
 
 @app.delete("/api/doctors/{doctor_id}")
-def deactivate_doctor(doctor_id: str):
+def deactivate_doctor(doctor_id: str, request: Request):
+    _require(request, "manage_doctors")
+    if not doctor_service.get_doctor(_view(request), doctor_id):
+        raise HTTPException(status_code=404, detail="Doctor not found")
     if not doctor_service.deactivate_doctor(db, doctor_id):
         raise HTTPException(status_code=404, detail="Doctor not found")
     return {"status": "deactivated", "doctor_id": doctor_id}
@@ -2349,7 +2462,7 @@ def deactivate_doctor(doctor_id: str):
 # ---- forecast -------------------------------------------------------------
 
 @app.get("/api/patients/{patient_id}/forecast")
-def get_patient_forecast(patient_id: str):
+def get_patient_forecast(patient_id: str, request: Request):
     """
     The early-warning forecast for one patient.
 
@@ -2357,6 +2470,7 @@ def get_patient_forecast(patient_id: str):
     gets status "insufficient_history" and the red flags that do apply, not an
     error and not a slope invented from a single point.
     """
+    _require_patient(request, patient_id)
     result, meta, _ = _forecast_for(patient_id)
     if result.get("status") == "no_data":
         exists = db["patient_worklist"].count_documents(
@@ -2398,7 +2512,7 @@ def _run_forecast_scan_task(scan_id: str, limit: Optional[int]) -> None:
 
 
 @app.post("/api/forecast/scan")
-def run_forecast_scan(payload: ScanRequest):
+def run_forecast_scan(payload: ScanRequest, request: Request):
     """
     Sweep the monitored cohort and raise alerts for anything high or critical.
 
@@ -2410,6 +2524,7 @@ def run_forecast_scan(payload: ScanRequest):
     Safe to run repeatedly: one alert per patient per monitoring week, updated
     rather than duplicated, and reopened only if the severity has worsened.
     """
+    _require(request, "run_sweeps")
     scan_id = f"SCAN-{str(uuid.uuid4())[:8].upper()}"
     run = {
         "id": scan_id,
@@ -2429,49 +2544,67 @@ def run_forecast_scan(payload: ScanRequest):
 
 
 @app.get("/api/forecast/scan/{scan_id}")
-def get_forecast_scan(scan_id: str):
+def get_forecast_scan(scan_id: str, request: Request):
+    # Sweeps cover every hospital, so their records are for whoever may run one.
     run = next((r for r in _forecast_scans if r["id"] == scan_id), None)
+    if run and request.state.user["role"] not in access.ACTIONS["run_sweeps"]:
+        run = None
     if not run:
         raise HTTPException(status_code=404, detail="Scan not found")
     return run
 
 
 @app.get("/api/forecast/scans")
-def get_forecast_scans():
+def get_forecast_scans(request: Request):
+    if request.state.user["role"] not in access.ACTIONS["run_sweeps"]:
+        return []
     return list(reversed(_forecast_scans))
 
 
 # ---- alerts and the doctor's inbox ---------------------------------------
 
 @app.get("/api/doctors/{doctor_id}/alerts")
-def get_doctor_alerts(doctor_id: str, status: Optional[str] = None, limit: int = 50):
-    if not doctor_service.get_doctor(db, doctor_id):
+def get_doctor_alerts(doctor_id: str, request: Request, status: Optional[str] = None,
+                      limit: int = 50):
+    view = _view(request)
+    if not doctor_service.get_doctor(view, doctor_id):
         raise HTTPException(status_code=404, detail="Doctor not found")
     return {"doctor_id": doctor_id,
-            "alerts": doctor_service.inbox(db, doctor_id, status=status, limit=limit)}
+            "alerts": doctor_service.inbox(view, doctor_id, status=status, limit=limit)}
 
 
 @app.get("/api/doctors/{doctor_id}/notifications")
-def get_doctor_notifications(doctor_id: str):
-    if not doctor_service.get_doctor(db, doctor_id):
+def get_doctor_notifications(doctor_id: str, request: Request):
+    view = _view(request)
+    if not doctor_service.get_doctor(view, doctor_id):
         raise HTTPException(status_code=404, detail="Doctor not found")
-    return doctor_service.unread_count(db, doctor_id)
+    return doctor_service.unread_count(view, doctor_id)
 
 
 @app.get("/api/clinical-alerts/unrouted")
-def get_unrouted_alerts(limit: int = 50):
+def get_unrouted_alerts(request: Request, limit: int = 50):
     """Alerts with no registered doctor to send them to. Never silently dropped."""
-    return {"alerts": doctor_service.unrouted_alerts(db, limit=limit)}
+    return {"alerts": doctor_service.unrouted_alerts(_view(request), limit=limit)}
 
 
 @app.get("/api/patients/{patient_id}/clinical-alerts")
-def get_patient_clinical_alerts(patient_id: str):
+def get_patient_clinical_alerts(patient_id: str, request: Request):
+    _require_patient(request, patient_id)
     return {"patient_id": patient_id,
-            "alerts": doctor_service.patient_alerts(db, patient_id)}
+            "alerts": doctor_service.patient_alerts(_view(request), patient_id)}
+
+
+def _require_clinical_alert(request: Request, alert_id: str) -> None:
+    """404 unless the alert is about one of the caller's patients; 403 unless
+    their role responds to alerts."""
+    if not _view(request)["clinical_alerts"].find_one({"alert_id": alert_id}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Alert not found")
+    _require(request, "respond_alerts")
 
 
 @app.post("/api/clinical-alerts/{alert_id}/acknowledge")
-def acknowledge_clinical_alert(alert_id: str, payload: AcknowledgeRequest):
+def acknowledge_clinical_alert(alert_id: str, payload: AcknowledgeRequest, request: Request):
+    _require_clinical_alert(request, alert_id)
     try:
         return doctor_service.acknowledge(db, alert_id, payload.doctor_id)
     except LookupError as exc:
@@ -2479,7 +2612,8 @@ def acknowledge_clinical_alert(alert_id: str, payload: AcknowledgeRequest):
 
 
 @app.post("/api/clinical-alerts/{alert_id}/respond")
-def respond_to_clinical_alert(alert_id: str, payload: RespondRequest):
+def respond_to_clinical_alert(alert_id: str, payload: RespondRequest, request: Request):
+    _require_clinical_alert(request, alert_id)
     try:
         return doctor_service.respond(
             db, alert_id, payload.doctor_id, payload.recommendation,
@@ -2491,7 +2625,8 @@ def respond_to_clinical_alert(alert_id: str, payload: RespondRequest):
 
 
 @app.post("/api/clinical-alerts/{alert_id}/dismiss")
-def dismiss_clinical_alert(alert_id: str, payload: DismissRequest):
+def dismiss_clinical_alert(alert_id: str, payload: DismissRequest, request: Request):
+    _require_clinical_alert(request, alert_id)
     try:
         return doctor_service.dismiss(db, alert_id, payload.doctor_id, payload.reason)
     except LookupError as exc:

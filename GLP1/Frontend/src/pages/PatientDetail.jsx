@@ -138,9 +138,17 @@ function DriverCard({ rank, driver, direction, shap }) {
 export default function PatientDetail() {
   const { id }   = useParams();
   const navigate = useNavigate();
-  const { isCostView } = useRole();
-  const { data: patientData } = usePatient(id);
+  const { isCostView, isPatient } = useRole();
+  const { data: patientData, loading: patientLoading } = usePatient(id);
   const { data: survivalData } = useSurvival();
+
+  if (!patientData) {
+    return (
+      <div className="card p-8 text-center text-sm text-gray-500 animate-fade-in">
+        {patientLoading ? 'Loading patient…' : 'This patient record is not available to you.'}
+      </div>
+    );
+  }
 
   const patient   = patientData.patient;
   const survivalCurves = survivalData.curves;
@@ -171,10 +179,10 @@ export default function PatientDetail() {
     <div className="patient-detail-page animate-fade-in">
 
       {/* ── Back button ──────────────────────────────────────────── */}
-      <button onClick={() => navigate(-1)}
+      {!isPatient && <button onClick={() => navigate(-1)}
         className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 mb-4 transition-colors font-medium">
         <ArrowLeft size={16} /> Back to Patient Risk Panel
-      </button>
+      </button>}
 
       {/* ── Finance-view context banner ──────────────────────────── */}
       {isCostView && (

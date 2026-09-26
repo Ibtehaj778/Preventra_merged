@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from core import chatbot_tools, llm
 from core.config import settings
 from core.security import current_user
+from core.access import patient_scope
 from schemas.chatbot import ChatRequest, ChatResponse, ToolCallLog
 
 logger = logging.getLogger("chatbot.router")
@@ -52,11 +53,16 @@ def _evict_expired() -> None:
         _SESSIONS.popitem(last=False)
 
 
-def _touch(session_id: str) -> dict:
+def _touch(session_id: str, owner: str) -> dict:
+    """A conversation belongs to the account that started it. Its messages can
+    carry patient details, so another account presenting the same id gets
+    "not found", exactly as if it had never existed."""
     session = _SESSIONS.get(session_id)
     if session is None:
-        session = {"messages": [], "touched": time.monotonic()}
+        session = {"messages": [], "touched": time.monotonic(), "owner": owner}
         _SESSIONS[session_id] = session
+    elif session.get("owner") != owner:
+        raise HTTPException(status_code=404, detail="Session not found.")
     else:
         session["touched"] = time.monotonic()
         _SESSIONS.move_to_end(session_id)
@@ -76,7 +82,7 @@ async def post_message(req: ChatRequest, user: dict = Depends(current_user)) -> 
 
     session_id = req.session_id or uuid.uuid4().hex
     _evict_expired()
-    session = _touch(session_id)
+    session = _touch(session_id, user["id"])
 
     latest_user = req.messages[-1]
     if latest_user.role != "user":
@@ -88,8 +94,10 @@ async def post_message(req: ChatRequest, user: dict = Depends(current_user)) -> 
     else:
         session["messages"].append({"role": "user", "content": latest_user.content})
 
+    # Every tool call below runs as this user, over this user's patients.
+    ctx = chatbot_tools.ToolContext(user=user, scope=await patient_scope(user))
     try:
-        system_instruction = await chatbot_tools.build_system_instruction(_audience(user))
+        system_instruction = await chatbot_tools.build_system_instruction(_audience(user), ctx)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Snapshot build failed")
         system_instruction = chatbot_tools._BASE_SYSTEM_PROMPT
@@ -122,7 +130,7 @@ async def post_message(req: ChatRequest, user: dict = Depends(current_user)) -> 
             })
 
             for call in function_calls:
-                result, err = await chatbot_tools.dispatch_tool(call["name"], call["args"])
+                result, err = await chatbot_tools.dispatch_tool(call["name"], call["args"], ctx)
                 tool_calls_log.append(ToolCallLog(
                     name=call["name"],
                     args=call["args"],
@@ -163,9 +171,9 @@ async def post_message(req: ChatRequest, user: dict = Depends(current_user)) -> 
 
 
 @router.get("/session/{session_id}")
-async def get_session(session_id: str) -> dict:
+async def get_session(session_id: str, user: dict = Depends(current_user)) -> dict:
     session = _SESSIONS.get(session_id)
-    if session is None:
+    if session is None or session.get("owner") != user["id"]:
         raise HTTPException(status_code=404, detail="Session not found.")
     _SESSIONS.move_to_end(session_id)
     session["touched"] = time.monotonic()
@@ -174,6 +182,9 @@ async def get_session(session_id: str) -> dict:
 
 
 @router.delete("/session/{session_id}")
-async def clear_session(session_id: str) -> dict:
-    existed = _SESSIONS.pop(session_id, None) is not None
+async def clear_session(session_id: str, user: dict = Depends(current_user)) -> dict:
+    session = _SESSIONS.get(session_id)
+    existed = session is not None and session.get("owner") == user["id"]
+    if existed:
+        _SESSIONS.pop(session_id, None)
     return {"cleared": existed, "session_id": session_id}

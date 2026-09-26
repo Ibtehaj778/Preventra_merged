@@ -8,9 +8,12 @@ Phase 3: payer ROI synthesizer — combines adherence + downstream cost + drug c
 
 from collections import Counter, defaultdict
 
-from fastapi import APIRouter, HTTPException, Query
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.mongo import get_db
+from core.access import require_cost_view, scope_of, scope_query
 from schemas.consequence import (
     DownstreamCostCluster,
     DownstreamCostResponse,
@@ -51,11 +54,13 @@ _CLUSTER_LABELS = {
 }
 
 
-@router.get("/downstream-cost", response_model=DownstreamCostResponse)
-async def get_downstream_cost() -> DownstreamCostResponse:
+@router.get("/downstream-cost", response_model=DownstreamCostResponse,
+            dependencies=[Depends(require_cost_view)])
+async def get_downstream_cost(scope: Optional[list] = Depends(scope_of)) -> DownstreamCostResponse:
     """Aggregate the per-patient Markov projections into a per-cluster view."""
     db = get_db()
-    docs = await db.progression_cost.find({}, {"_id": 0}).to_list(length=None)
+    # The caller's patients only: an insurer's view adds up its own members.
+    docs = await db.progression_cost.find(scope_query(scope), {"_id": 0}).to_list(length=None)
     if not docs:
         raise HTTPException(
             status_code=503,
@@ -133,8 +138,9 @@ async def get_downstream_cost() -> DownstreamCostResponse:
     )
 
 
-@router.get("/rebound-risk", response_model=ReboundRiskResponse)
-async def get_rebound_risk() -> ReboundRiskResponse:
+@router.get("/rebound-risk", response_model=ReboundRiskResponse,
+            dependencies=[Depends(require_cost_view)])
+async def get_rebound_risk(scope: Optional[list] = Depends(scope_of)) -> ReboundRiskResponse:
     """Per-cluster rebound severity + trajectory + dropout-timing sensitivity.
 
     Reads three Mongo collections:
@@ -143,7 +149,7 @@ async def get_rebound_risk() -> ReboundRiskResponse:
         rebound_sensitivity   cluster x scenario summary (sensitivity panel)
     """
     db = get_db()
-    patient_docs = await db.rebound_risk.find({}, {"_id": 0}).to_list(length=None)
+    patient_docs = await db.rebound_risk.find(scope_query(scope), {"_id": 0}).to_list(length=None)
     if not patient_docs:
         raise HTTPException(
             status_code=503,
@@ -274,7 +280,7 @@ async def get_rebound_risk() -> ReboundRiskResponse:
     )
 
 
-@router.get("/payer-scenarios")
+@router.get("/payer-scenarios", dependencies=[Depends(require_cost_view)])
 async def get_payer_scenarios() -> dict:
     """List available payer_type scenarios in the payer_roi collection."""
     db = get_db()
@@ -284,7 +290,7 @@ async def get_payer_scenarios() -> dict:
     return {"scenarios": scenarios, "default": "current"}
 
 
-@router.get("/payer-roi", response_model=PayerROIResponse)
+@router.get("/payer-roi", response_model=PayerROIResponse, dependencies=[Depends(require_cost_view)])
 async def get_payer_roi(
     intervention_cost: float = Query(
         _DEFAULT_INTERVENTION_COST,

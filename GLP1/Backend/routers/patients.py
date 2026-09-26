@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 import core.model as model
 from core.mongo import get_db
 from core.security import current_user
+from core.access import require_patient, scope_of, scope_query
 from schemas.patient_views import PatientPharmacyView
 
 router = APIRouter()
@@ -95,9 +96,13 @@ async def get_patients(
     sort_dir:       str             = Query("desc"),
     search:         Optional[str]   = Query(None),
     user:           dict            = Depends(current_user),
+    scope:          Optional[list]  = Depends(scope_of),
 ):
     db = get_db()
-    match = _build_match(segment, molecule, min_risk, prediction, financial_only, search)
+    # Only the caller's patients: a top-level condition, so the counts below
+    # (which extend `match`) are limited the same way as the page.
+    match = {**_build_match(segment, molecule, min_risk, prediction, financial_only, search),
+             **scope_query(scope)}
     direction = -1 if sort_dir.lower() == "desc" else 1
 
     high_risk_filter = {**match, "dropout_prob": {"$gte": _HIGH_RISK_THRESHOLD}}
@@ -128,7 +133,9 @@ async def get_patients(
 
 
 @router.get("/patients/{patient_idx}")
-async def get_patient(patient_idx: int, user: dict = Depends(current_user)):
+async def get_patient(patient_idx: int, user: dict = Depends(current_user),
+                      scope: Optional[list] = Depends(scope_of)):
+    require_patient(scope, patient_idx)
     db = get_db()
     doc = await db.patients.find_one({"patient_idx": patient_idx}, {"_id": 0})
     if doc is None:
@@ -165,7 +172,9 @@ async def get_patient(patient_idx: int, user: dict = Depends(current_user)):
     }
     
 @router.get("/patients/{patient_idx}/pharmacy-view", response_model=PatientPharmacyView)
-async def get_patient_pharmacy_view(patient_idx: int, user: dict = Depends(current_user)):
+async def get_patient_pharmacy_view(patient_idx: int, user: dict = Depends(current_user),
+                                    scope: Optional[list] = Depends(scope_of)):
+    require_patient(scope, patient_idx)
     db = get_db()
     doc = await db.patients.find_one({"patient_idx": patient_idx}, {"_id": 0})
     if doc is None:

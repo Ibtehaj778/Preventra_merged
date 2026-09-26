@@ -5,15 +5,16 @@ then runs the same ROI math the dashboard expects.
 
 from math import ceil
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from core.mongo import get_db
+from core.access import require_cost_view
 from schemas.budget import BudgetRequest, BudgetResponse, SegmentImpact
 
 router = APIRouter()
 
 
-@router.post("/budget-impact")
+@router.post("/budget-impact", dependencies=[Depends(require_cost_view)])
 async def budget_impact(req: BudgetRequest) -> BudgetResponse:
     reduction   = req.dropout_reduction_pct / 100
     scope       = req.population_scope_pct / 100

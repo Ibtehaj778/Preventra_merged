@@ -28,6 +28,8 @@ export function RoleProvider({ children }) {
       role,
       roleLabel:  ROLE_LABELS[role] || role,
       isCostView: COST_VIEW_ROLES.includes(role),
+      // Patients get one page - their own record - and nothing else.
+      isPatient:  role === 'patient',
     }}>
       {children}
     </RoleContext.Provider>

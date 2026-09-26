@@ -16,6 +16,8 @@ import CostEffectiveness from './pages/CostEffectiveness';
 import BudgetSimulator from './pages/BudgetSimulator';
 import CostOfInaction from './pages/CostOfInaction';
 import Settings from './pages/Settings';
+import MyRecord from './pages/MyRecord';
+import { useRole } from './context/RoleContext';
 
 function AuthenticatedApp() {
   const { ready, progress, status } = useAppLoader();
@@ -28,22 +30,45 @@ function AuthenticatedApp() {
     <RoleProvider>
       <PatientsProvider>
         <AppShell>
-          <Routes>
-            <Route path="/"             element={<ExecutiveSummary />} />
-            <Route path="/patients"     element={<PatientRiskPanel />} />
-            <Route path="/patients/:id" element={<PatientDetail />} />
-            <Route path="/segments"     element={<SegmentExplorer />} />
-            <Route path="/survival"     element={<SurvivalAnalysis />} />
-            <Route path="/cost"         element={<CostEffectiveness />} />
-            <Route path="/budget"       element={<BudgetSimulator />} />
-            <Route path="/consequence"  element={<CostOfInaction />} />
-            <Route path="/settings"     element={<Settings />} />
-            <Route path="*"             element={<Navigate to="/" replace />} />
-          </Routes>
-          <ChatWidget />
+          <RoleRoutes />
         </AppShell>
       </PatientsProvider>
     </RoleProvider>
+  );
+}
+
+// Which pages each role can reach. The backend refuses the rest anyway; these
+// redirects stop a page from opening at all, so it never falls back to stand-in
+// data after a refusal.
+function RoleRoutes() {
+  const { isCostView, isPatient } = useRole();
+
+  if (isPatient) {
+    return (
+      <Routes>
+        <Route path="/my-record"    element={<MyRecord />} />
+        <Route path="/patients/:id" element={<PatientDetail />} />
+        <Route path="*"             element={<Navigate to="/my-record" replace />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <>
+      <Routes>
+        <Route path="/"             element={<ExecutiveSummary />} />
+        <Route path="/patients"     element={<PatientRiskPanel />} />
+        <Route path="/patients/:id" element={<PatientDetail />} />
+        <Route path="/segments"     element={<SegmentExplorer />} />
+        <Route path="/survival"     element={<SurvivalAnalysis />} />
+        {isCostView && <Route path="/cost"        element={<CostEffectiveness />} />}
+        {isCostView && <Route path="/budget"      element={<BudgetSimulator />} />}
+        {isCostView && <Route path="/consequence" element={<CostOfInaction />} />}
+        <Route path="/settings"     element={<Settings />} />
+        <Route path="*"             element={<Navigate to="/" replace />} />
+      </Routes>
+      <ChatWidget />
+    </>
   );
 }
 

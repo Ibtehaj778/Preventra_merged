@@ -11,17 +11,35 @@ import ManualEntry from './pages/ManualEntry';
 import About from './pages/About';
 import Settings from './pages/Settings';
 import TestComponents from './pages/TestComponents';
+import MyRecord from './pages/MyRecord';
 import { MANUAL_ENTRY_ENABLED } from './api';
+import { readClaims } from './api/auth';
 
 /**
  * The care-team dashboard.
  *
- * There is no sign-in and there are no roles: every visitor gets the full
- * clinical view. The only gate in front of the data is the API key the client
- * sends on each request (see api/index.js), which is a deployment control and
- * not user authentication.
+ * Every visitor is a signed-in account, and the backend shows each one only
+ * its own patients (api/access.py): the hospital for its admin and case
+ * managers, their assigned patients for doctors and nurses, members for an
+ * insurer. A patient gets a single page - their own record. The routes below
+ * only decide which pages open; the backend decides what data they get.
  */
 function App() {
+  if (readClaims()?.role === 'patient') {
+    return (
+      <Router>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/my-record" element={<MyRecord />} />
+            <Route path="/patients/:id" element={<PatientDetail />} />
+            <Route path="/patients/:id/trend" element={<PatientTrend />} />
+            <Route path="*" element={<Navigate to="/my-record" replace />} />
+          </Route>
+        </Routes>
+      </Router>
+    );
+  }
+
   return (
     <Router>
       <Routes>

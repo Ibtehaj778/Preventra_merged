@@ -28,7 +28,11 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
     };
   }, [open, onClose]);
 
-  const navItems = [
+  const isPatient = readClaims()?.role === 'patient';
+  // A patient sees one thing: their own record.
+  const navItems = isPatient ? [
+    { name: 'My record', path: '/my-record', icon: <Info size={20} /> },
+  ] : [
     { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} /> },
     ...(MANUAL_ENTRY_ENABLED
       ? [{ name: 'Manual Entry', path: '/manual-entry', icon: <UserPlus size={20} /> }]

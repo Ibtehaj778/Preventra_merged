@@ -3,9 +3,10 @@ Cost-Effectiveness Studio — live read from cost_effectiveness collection,
 plus static benchmark constants from the notebook.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from core.mongo import get_db
+from core.access import require_cost_view
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ _BENCHMARKS = {
 }
 
 
-@router.get("/cost-effectiveness")
+@router.get("/cost-effectiveness", dependencies=[Depends(require_cost_view)])
 async def get_cost_effectiveness():
     db = get_db()
     cea = await db.cost_effectiveness.find({}, {"_id": 0}).sort("cluster", 1).to_list(length=None)

@@ -12,7 +12,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable, Optional
 
 from google.genai import types
 
@@ -28,8 +29,23 @@ from routers import (
     survival     as survival_router,
 )
 from schemas.budget import BudgetRequest
+from core.access import COST_VIEW_ROLES
 
 logger = logging.getLogger("chatbot.tools")
+
+
+@dataclass
+class ToolContext:
+    """Who is asking, and which patients they may see. Every tool runs as this
+    user: the router functions it calls apply the same scope as the UI does,
+    so the chatbot can never answer from patients its user cannot open."""
+    user: dict
+    scope: Optional[list]
+
+
+# The tools behind the cost and ROI screens; refused for roles without them.
+COST_TOOLS = {"get_cost_effectiveness", "simulate_budget", "get_downstream_cost",
+              "get_rebound_risk", "get_payer_scenarios", "get_payer_roi"}
 
 
 # ─────────────────────────── Tool handlers ────────────────────────────
@@ -39,19 +55,20 @@ logger = logging.getLogger("chatbot.tools")
 # to what the UI hits.
 
 
-async def _get_summary(**_: Any) -> Any:
-    return await summary_router.get_summary()
+async def _get_summary(ctx: ToolContext, **_: Any) -> Any:
+    return await summary_router.get_summary(scope=ctx.scope)
 
 
-async def _get_segments(**_: Any) -> Any:
+async def _get_segments(ctx: ToolContext, **_: Any) -> Any:
     return await segments_router.get_segments()
 
 
-async def _get_segment_detail(*, cluster_id: int) -> Any:
+async def _get_segment_detail(ctx: ToolContext, *, cluster_id: int) -> Any:
     return await segments_router.get_segment(int(cluster_id))
 
 
 async def _search_patients(
+    ctx: ToolContext,
     *,
     segment: int | None = None,
     molecule: str | None = None,
@@ -76,23 +93,26 @@ async def _search_patients(
         sort_by=sort_by,
         sort_dir=sort_dir,
         search=search,
+        user=ctx.user,
+        scope=ctx.scope,
     )
     return result
 
 
-async def _get_patient(*, patient_idx: int) -> Any:
-    return await patients_router.get_patient(int(patient_idx))
+async def _get_patient(ctx: ToolContext, *, patient_idx: int) -> Any:
+    return await patients_router.get_patient(int(patient_idx), user=ctx.user, scope=ctx.scope)
 
 
-async def _get_survival(**_: Any) -> Any:
+async def _get_survival(ctx: ToolContext, **_: Any) -> Any:
     return survival_router.get_survival()
 
 
-async def _get_cost_effectiveness(**_: Any) -> Any:
+async def _get_cost_effectiveness(ctx: ToolContext, **_: Any) -> Any:
     return await cost_router.get_cost_effectiveness()
 
 
 async def _simulate_budget(
+    ctx: ToolContext,
     *,
     dropout_reduction_pct: float,
     population_scope_pct: float = 100.0,
@@ -106,19 +126,20 @@ async def _simulate_budget(
     return await budget_router.budget_impact(req)
 
 
-async def _get_downstream_cost(**_: Any) -> Any:
-    return await consequence_router.get_downstream_cost()
+async def _get_downstream_cost(ctx: ToolContext, **_: Any) -> Any:
+    return await consequence_router.get_downstream_cost(scope=ctx.scope)
 
 
-async def _get_rebound_risk(**_: Any) -> Any:
-    return await consequence_router.get_rebound_risk()
+async def _get_rebound_risk(ctx: ToolContext, **_: Any) -> Any:
+    return await consequence_router.get_rebound_risk(scope=ctx.scope)
 
 
-async def _get_payer_scenarios(**_: Any) -> Any:
+async def _get_payer_scenarios(ctx: ToolContext, **_: Any) -> Any:
     return await consequence_router.get_payer_scenarios()
 
 
 async def _get_payer_roi(
+    ctx: ToolContext,
     *,
     intervention_cost: float = 500.0,
     payer_type: str = "current",
@@ -131,11 +152,11 @@ async def _get_payer_roi(
     )
 
 
-async def _get_global_shap(**_: Any) -> Any:
+async def _get_global_shap(ctx: ToolContext, **_: Any) -> Any:
     return shap_router.get_global_shap()
 
 
-async def _get_model_info(**_: Any) -> Any:
+async def _get_model_info(ctx: Optional[ToolContext] = None, **_: Any) -> Any:
     return info_router.get_model_info()
 
 
@@ -276,12 +297,15 @@ def _serialize(obj: Any) -> Any:
     return {"result": obj}
 
 
-async def dispatch_tool(name: str, args: dict) -> tuple[Any, str | None]:
+async def dispatch_tool(name: str, args: dict, ctx: ToolContext) -> tuple[Any, str | None]:
     handler = TOOL_HANDLERS.get(name)
     if handler is None:
         return {"error": f"Unknown tool '{name}'"}, f"Unknown tool '{name}'"
+    if name in COST_TOOLS and ctx.user["role"] not in COST_VIEW_ROLES:
+        msg = "Cost and ROI figures are available to hospital administrators and insurers only."
+        return {"error": msg}, msg
     try:
-        result = await handler(**(args or {}))
+        result = await handler(ctx, **(args or {}))
         return _serialize(result), None
     except Exception as exc:  # noqa: BLE001
         logger.exception("Tool '%s' raised", name)
@@ -291,20 +315,23 @@ async def dispatch_tool(name: str, args: dict) -> tuple[Any, str | None]:
 # ─────────────────────────── Snapshot ─────────────────────────────────
 
 _SNAPSHOT_TTL_SECONDS = 60.0
-_snapshot_cache: dict[str, Any] = {"ts": 0.0, "text": ""}
+# One snapshot per account. The headline numbers are the caller's own, so a
+# snapshot shared between users would hand one hospital another's figures.
+_snapshot_cache: dict[str, dict[str, Any]] = {}
 
 
-async def build_snapshot() -> str:
+async def build_snapshot(ctx: ToolContext) -> str:
     """Compact Markdown of headline KPIs + segments + model — injected into the
     system prompt so the LLM can answer aggregate questions with zero tool calls.
-    Cached for 60s to keep response latency low."""
+    Cached for 60s per account to keep response latency low."""
     now = time.monotonic()
-    if now - _snapshot_cache["ts"] < _SNAPSHOT_TTL_SECONDS and _snapshot_cache["text"]:
-        return _snapshot_cache["text"]
+    cached = _snapshot_cache.get(ctx.user["id"])
+    if cached and now - cached["ts"] < _SNAPSHOT_TTL_SECONDS:
+        return cached["text"]
 
     try:
         summary, segments, model_info = await asyncio.gather(
-            summary_router.get_summary(),
+            summary_router.get_summary(scope=ctx.scope),
             segments_router.get_segments(),
             _get_model_info(),
         )
@@ -357,8 +384,7 @@ async def build_snapshot() -> str:
     )
 
     text = "\n".join(lines)
-    _snapshot_cache["ts"] = now
-    _snapshot_cache["text"] = text
+    _snapshot_cache[ctx.user["id"]] = {"ts": now, "text": text}
     return text
 
 
@@ -400,8 +426,8 @@ _ROLE_ADDENDUM = {
 }
 
 
-async def build_system_instruction(role_context: str | None) -> str:
-    snapshot = await build_snapshot()
+async def build_system_instruction(role_context: str | None, ctx: ToolContext) -> str:
+    snapshot = await build_snapshot(ctx)
     parts = [_BASE_SYSTEM_PROMPT]
     if role_context and role_context in _ROLE_ADDENDUM:
         parts.append(_ROLE_ADDENDUM[role_context])

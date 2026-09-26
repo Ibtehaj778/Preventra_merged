@@ -52,7 +52,7 @@ function NavItem({ item, collapsed, isCostView, extra = {} }) {
 export default function AppShell({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { roleLabel, isCostView } = useRole();
+  const { roleLabel, isCostView, isPatient } = useRole();
   const { logout, user, token } = useAuth();
   const location = useLocation();
 
@@ -128,6 +128,14 @@ export default function AppShell({ children }) {
 
         {/* Nav links — any tap inside closes the mobile drawer */}
         <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5" onClick={() => setMobileOpen(false)}>
+          {isPatient ? (
+            // A patient sees one thing: their own record.
+            <NavLink to="/my-record" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              title={isCollapsed ? 'My record' : undefined}>
+              <UserCircle size={17} className="nav-icon flex-shrink-0" />
+              {!isCollapsed && <span className="animate-fade-in">My record</span>}
+            </NavLink>
+          ) : (<>
           {/* Section: Overview */}
           {!isCollapsed && <div className="text-[10px] text-white/25 uppercase tracking-widest px-3 pt-3 pb-1">Overview</div>}
           {NAV_ITEMS.slice(0, 2).map(item => (
@@ -141,14 +149,15 @@ export default function AppShell({ children }) {
             <NavItem key={item.to} item={item} collapsed={isCollapsed} isCostView={isCostView} />
           ))}
 
-          {/* Section: Financial — insurer gets badge */}
-          {!isCollapsed && (
+          {/* Section: Financial - only for the roles that own the budget; hidden,
+              not dimmed, for everyone else (the backend refuses them anyway) */}
+          {isCostView && !isCollapsed && (
             <div className="flex items-center gap-2 px-3 pt-4 pb-1">
               <div className="text-[10px] text-white/25 uppercase tracking-widest">Financial</div>
-              {isCostView && <div className="text-[9px] bg-blue-500/30 text-blue-300 px-1.5 py-0.5 rounded-full">Primary</div>}
+              <div className="text-[9px] bg-blue-500/30 text-blue-300 px-1.5 py-0.5 rounded-full">Primary</div>
             </div>
           )}
-          {NAV_ITEMS.slice(4, 6).map(item => (
+          {isCostView && NAV_ITEMS.slice(4, 6).map(item => (
             <NavItem key={item.to} item={item} collapsed={isCollapsed} isCostView={isCostView} />
           ))}
 
@@ -159,6 +168,7 @@ export default function AppShell({ children }) {
             <Settings size={17} className="nav-icon flex-shrink-0" />
             {!isCollapsed && <span className="animate-fade-in">Settings & Data Info</span>}
           </NavLink>
+          </>)}
         </nav>
         {/* Switch App */}
       {!collapsed && user?.app_access?.includes('readmissions') && (

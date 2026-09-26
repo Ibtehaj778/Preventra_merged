@@ -93,6 +93,13 @@ async def test_a_deleted_account_is_refused_even_with_an_unexpired_token(identit
     assert e.value.status_code == 401
 
 
+async def test_an_account_still_on_a_temporary_password_is_refused(identity):
+    doc = add_user(identity, must_change_password=True)
+    with pytest.raises(HTTPException) as e:
+        await call(token_for(doc))
+    assert e.value.status_code == 403
+
+
 async def test_an_account_without_glp1_access_is_refused(identity):
     doc = add_user(identity, app_access=["readmissions"])
     with pytest.raises(HTTPException) as e:

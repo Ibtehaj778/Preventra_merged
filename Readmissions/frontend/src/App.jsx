@@ -9,6 +9,7 @@ import Analytics from './pages/Analytics';
 import DoctorConsole from './pages/DoctorConsole';
 import ManualEntry from './pages/ManualEntry';
 import About from './pages/About';
+import Settings from './pages/Settings';
 import TestComponents from './pages/TestComponents';
 import { MANUAL_ENTRY_ENABLED } from './api';
 
@@ -35,6 +36,7 @@ function App() {
               typing the URL gets you a form that cannot save. */}
           {MANUAL_ENTRY_ENABLED && <Route path="/manual-entry" element={<ManualEntry />} />}
           <Route path="/about" element={<About />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/test-components" element={<TestComponents />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

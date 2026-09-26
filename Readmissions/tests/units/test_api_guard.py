@@ -98,3 +98,81 @@ def test_me_and_refresh_answer_for_a_pending_account(main, db):
     client = TestClient(main.app, headers={"Authorization": f"Bearer {token}"})
     assert client.get("/auth/me").json()["status"] == "pending"
     assert client.post("/auth/refresh").status_code == 200
+
+
+# ------------------------------------------------------- User Management
+def admin_routes(service):
+    for route in service.app.routes:
+        if isinstance(route, APIRoute) and route.path.startswith("/auth/admin/"):
+            for method in route.methods:
+                yield method, re.sub(r"\{[^}]+\}", "x", route.path)
+
+
+def active_account(db, email, role, hospital_id="demo-hospital-a", **extra):
+    auth.users(db).insert_one({"email": email, "role": role, "status": "active",
+                               "hospital_id": hospital_id,
+                               "password_hash": auth.hash_password("correct-horse"), **extra})
+    return auth.login(db, email, "correct-horse")["token"]
+
+
+def test_every_admin_route_refuses_a_request_without_a_token(main, db):
+    client = TestClient(main.app)
+    routes = list(admin_routes(main))
+    assert len(routes) >= 7
+    assert [(m, p) for m, p in routes if client.request(m, p).status_code != 401] == []
+
+
+def test_every_admin_route_refuses_staff_who_are_not_managers(main, db):
+    token = active_account(db, "doc@a.org", "doctor")
+    client = TestClient(main.app, headers={"Authorization": f"Bearer {token}"})
+    assert [(m, p) for m, p in admin_routes(main)
+            if client.request(m, p, json={}).status_code != 403] == []
+
+
+def test_user_management_skips_the_api_key_but_data_routes_do_not(main, db, monkeypatch):
+    """GLP-1 calls User Management without our service key, so /auth/* cannot
+    need it - while /api/* still does."""
+    monkeypatch.setattr(main, "API_KEY", "service-key")
+    token = active_account(db, "ops@team.com", "superadmin", hospital_id=None)
+    client = TestClient(main.app, headers={"Authorization": f"Bearer {token}"})
+    assert client.get("/auth/admin/users").status_code == 200
+    assert client.get("/api/summary").status_code == 401             # no key
+    assert client.get("/api/summary", headers={"X-API-Key": "service-key"}).status_code \
+        not in (401, 403)
+
+
+def test_a_temporary_password_is_refused_on_every_data_route(main, db):
+    token = active_account(db, "doc@a.org", "doctor", must_change_password=True)
+    client = TestClient(main.app, headers={"Authorization": f"Bearer {token}"})
+    assert [(m, p) for m, p in api_routes(main) if client.request(m, p).status_code != 403] == []
+    me = client.get("/auth/me")
+    assert me.status_code == 200 and me.json()["must_change_password"] is True
+
+
+def test_the_admin_endpoints_work_end_to_end_for_a_hospital_admin(main, db):
+    sa = active_account(db, "ops@team.com", "superadmin", hospital_id=None)
+    as_sa = TestClient(main.app, headers={"Authorization": f"Bearer {sa}"})
+    assert as_sa.post("/auth/admin/hospitals", json={"name": "Demo Hospital A"}).status_code == 201
+
+    admin = active_account(db, "admin@a.org", "hospital_admin")
+    as_admin = TestClient(main.app, headers={"Authorization": f"Bearer {admin}"})
+    created = as_admin.post("/auth/admin/users", json={"email": "doc@a.org", "role": "doctor",
+                                                       "name": "Dr A"})
+    assert created.status_code == 201
+    temp = created.json()["temporary_password"]
+
+    # The new doctor signs in, is made to change the temporary password, then works.
+    doc_token = TestClient(main.app).post("/auth/login", json={"email": "doc@a.org",
+                                                              "password": temp}).json()["token"]
+    as_doc = TestClient(main.app, headers={"Authorization": f"Bearer {doc_token}"})
+    assert as_doc.get("/api/summary").status_code == 403
+    changed = as_doc.post("/auth/change-password", json={"current_password": temp,
+                                                         "new_password": "my-own-password"})
+    assert changed.status_code == 200
+    fresh = TestClient(main.app, headers={"Authorization": f"Bearer {changed.json()['token']}"})
+    assert fresh.get("/api/summary").status_code not in (401, 403)
+
+    user_id = next(u["sub"] for u in as_admin.get("/auth/admin/users").json()
+                   if u["email"] == "doc@a.org")
+    assert as_admin.patch(f"/auth/admin/users/{user_id}",
+                          json={"role": "nurse"}).json()["role"] == "nurse"

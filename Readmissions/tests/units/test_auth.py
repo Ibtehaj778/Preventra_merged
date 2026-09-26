@@ -52,7 +52,8 @@ def token_for(db, email="a@b.com"):
 def test_signup_returns_a_token_carrying_the_agreed_claims(db):
     out = auth.signup(db, "New.User@Test.com", "correct-horse")
     c = claims_of(out)
-    assert set(c) == {"sub", "email", "role", "status", "hospital_id", "app_access", "exp"}
+    assert set(c) == {"sub", "email", "role", "status", "hospital_id", "must_change_password",
+                      "app_access", "exp"}
     assert c["email"] == "new.user@test.com"          # normalised
     assert c["app_access"] == ["glp1", "readmissions"]
 
@@ -194,9 +195,11 @@ def test_the_subject_is_the_account_id_so_each_product_can_look_the_user_up(db):
     assert claims_of(out)["sub"] == str(auth.users(db).find_one({"email": "a@b.com"})["_id"])
 
 
-def test_the_response_never_carries_the_password_hash(db):
+def test_the_response_never_carries_the_password_or_its_hash(db):
     out = auth.signup(db, "a@b.com", "correct-horse")
-    assert "password" not in str(out).lower()
+    assert "password_hash" not in str(out)
+    assert "$2b$" not in str(out)
+    assert "correct-horse" not in str(out)
 
 
 def test_tokens_cannot_be_issued_without_a_secret(db, monkeypatch):
@@ -265,7 +268,8 @@ def test_public_view_never_exposes_the_hash(db):
     make_user(db)
     view = auth.public_view(auth.users(db).find_one({"email": "a@b.com"}))
     assert "password_hash" not in view
-    assert set(view) == {"sub", "email", "role", "status", "hospital_id", "app_access"}
+    assert set(view) == {"sub", "email", "role", "status", "hospital_id",
+                         "must_change_password", "app_access"}
 
 
 def test_auth_config_reports_state_without_leaking_the_secret():

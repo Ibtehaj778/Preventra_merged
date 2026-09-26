@@ -4,6 +4,12 @@ import { dataSources } from '../data/mockData';
 import { useModelInfo } from '../hooks/useModelInfo';
 import { ProgressBar } from '../components/shared';
 import { useRole } from '../context/RoleContext';
+import { useAuth } from '../context/AuthContext';
+import { AUTH_BASE } from '../data/api';
+import UserManagement from '../components/shared/UserManagement';
+
+// Stable, module-level: UserManagement reloads whenever this function changes.
+const getToken = () => localStorage.getItem('glp1_token');
 
 const LIMITATIONS = [
   {
@@ -50,8 +56,10 @@ function Collapsible({ title, children }) {
 }
 
 export default function Settings() {
-  const { roleLabel, isCostView } = useRole();
+  const { role, roleLabel, isCostView } = useRole();
+  const { user } = useAuth();
   const { data: modelInfo } = useModelInfo();
+  const isManager = role === 'superadmin' || role === 'hospital_admin';
 
   const PERF_METRICS = [
     ['Accuracy',  modelInfo.accuracy,  'Primary classification accuracy on held-out test set'],
@@ -63,6 +71,13 @@ export default function Settings() {
 
   return (
     <div className="max-w-[900px] mx-auto space-y-6 animate-fade-in">
+
+      {/* ── User Management (superadmin, hospital admin) ─────── */}
+      {isManager && (
+        <div className="card p-6">
+          <UserManagement authBaseUrl={AUTH_BASE} getToken={getToken} me={user} />
+        </div>
+      )}
 
       {/* ── Model performance ─────────────────────────────────── */}
       <div className="card p-6">

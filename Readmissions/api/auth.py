@@ -17,7 +17,8 @@ so those accounts keep working and nobody has to reset a password.
 Token claims, frozen by agreement between both products:
 
     {"sub": "<users._id as a string>", "email": ..., "role": ..., "status": ...,
-     "hospital_id": ..., "app_access": ["glp1", "readmissions"], "exp": <unix>}
+     "hospital_id": ..., "must_change_password": <bool>,
+     "app_access": ["glp1", "readmissions"], "exp": <unix>}
 
 The claims are for display only. Both backends re-read the account on every
 request (see `authenticate`), so an approval, a role change or a removal takes
@@ -141,8 +142,8 @@ def ensure_indexes(db) -> None:
 
 # --------------------------------------------------------------------- helpers
 def slugify_org(name: str) -> str:
-    """"City Hospital" -> "city-hospital". Matches the org_id format already in
-    the collection, so accounts created here group with the existing ones."""
+    """"City Hospital" -> "city-hospital". The id format for hospitals and
+    insurers, readable in URLs and in the database."""
     slug = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
     return slug or "unaffiliated"
 
@@ -205,6 +206,7 @@ def issue_token(user: dict, exp: Optional[int] = None) -> dict:
         "role": user["role"],
         "status": user["status"],
         "hospital_id": user["hospital_id"],
+        "must_change_password": bool(user.get("must_change_password")),
         "app_access": user["app_access"],
         "exp": expires_at,
     }
@@ -306,17 +308,24 @@ def bearer_token(authorization: Optional[str]) -> str:
 
 
 def authenticate(db, token: str, allow_pending: bool = False,
-                 app: Optional[str] = None) -> dict:
+                 app: Optional[str] = None, allow_password_change: bool = False) -> dict:
     """The account behind a token, read from the database on every call.
 
     The token only proves who someone is. What they may do comes from the
     current record, which is why an approval, a role change or a deleted account
     takes effect on the very next request.
+
+    An account still on a temporary password is refused everything except the
+    calls needed to replace it: a password an admin has seen, and may have sent
+    in a message, should not unlock patient data.
     """
     account = effective(get_account(db, decode_token(token).get("sub")))
     if account["status"] != "active" and not allow_pending:
         raise HTTPException(status_code=403,
                             detail="This account is waiting for approval by an administrator")
+    if account.get("must_change_password") and not allow_password_change:
+        raise HTTPException(status_code=403,
+                            detail="Set a new password before continuing")
     if app and app not in account["app_access"]:
         raise HTTPException(status_code=403, detail=f"This account does not have access to {app}")
     return account
@@ -346,7 +355,7 @@ def refresh(db, token: str) -> dict:
     they last signed in sees their apps without signing in again. The expiry is
     kept, so this cannot be used to stay signed in indefinitely."""
     claims = decode_token(token)
-    account = authenticate(db, token, allow_pending=True)
+    account = authenticate(db, token, allow_pending=True, allow_password_change=True)
     return issue_token(account, exp=claims["exp"])
 
 
@@ -356,6 +365,7 @@ def public_view(account: dict) -> dict:
     return {"sub": str(account["_id"]), "email": account.get("email", ""),
             "role": account["role"], "status": account["status"],
             "hospital_id": account["hospital_id"],
+            "must_change_password": bool(account.get("must_change_password")),
             "app_access": account["app_access"]}
 
 

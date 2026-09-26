@@ -140,10 +140,12 @@ export function signOut() {
 export function requireSession() {
   if (!PORTAL_URL) return false;          // nowhere to send anyone; carry on
 
-  // A pending account also goes back: the portal shows it the "waiting for
-  // approval" screen. The backend refuses it data either way.
+  // A pending account, or one still on a temporary password, also goes back:
+  // the portal shows it the "waiting for approval" or "set a new password"
+  // screen. The backend refuses it data either way.
   const claims = readClaims();
-  if (claims && !isExpired(claims) && claims.status !== 'pending') return false;
+  if (claims && !isExpired(claims) && claims.status !== 'pending'
+      && !claims.must_change_password) return false;
 
   clearToken();                            // expired tokens do not linger
   window.location.replace(PORTAL_URL);     // replace: Back must not return here

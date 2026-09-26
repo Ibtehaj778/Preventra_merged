@@ -7,7 +7,7 @@ const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 // it only receives one (from here, or from the portal on the URL fragment) and
 // sends it back on protected calls. Keep this pointed at the auth service, not
 // at VITE_API_URL.
-const AUTH_BASE = (import.meta.env.VITE_AUTH_URL ?? "http://localhost:8001").replace(/\/$/, "");
+export const AUTH_BASE = (import.meta.env.VITE_AUTH_URL ?? "http://localhost:8001").replace(/\/$/, "");
 
 // Read straight from storage rather than from React state: this module is
 // imported by hooks that run before any provider mounts, and AuthContext

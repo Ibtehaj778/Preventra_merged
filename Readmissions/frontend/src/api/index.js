@@ -6,6 +6,8 @@ import { getToken, signOut } from './auth';
 // Defaults to false so real backend is used when the variable is absent.
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+// Also the shared auth service (login and User Management live on this API).
+export const API_BASE_URL = BASE_URL;
 const API_KEY = import.meta.env.VITE_API_KEY || '';
 
 // Adding a patient by hand is off by default and must match MANUAL_ENTRY_ENABLED

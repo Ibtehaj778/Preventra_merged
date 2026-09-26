@@ -43,6 +43,8 @@ def effective(account: dict) -> dict:
         role, status, hospital_id = account["role"], account["status"], account.get("hospital_id")
     return {"id": str(account["_id"]), "email": account.get("email", ""),
             "role": role, "status": status, "hospital_id": hospital_id,
+            "insurer_id": account.get("insurer_id"),
+            "must_change_password": bool(account.get("must_change_password")),
             "app_access": account.get("app_access") or ["glp1", "readmissions"]}
 
 
@@ -64,6 +66,10 @@ async def current_user(
     if user["status"] != "active":
         raise HTTPException(status_code=403,
                             detail="This account is waiting for approval by an administrator")
+    # A temporary password an admin has seen - and may have sent in a message -
+    # must not unlock patient data. The portal makes them replace it first.
+    if user["must_change_password"]:
+        raise HTTPException(status_code=403, detail="Set a new password before continuing")
     if "glp1" not in user["app_access"]:
         raise HTTPException(status_code=403, detail="This account doesn't have access to GLP-1")
     return user

@@ -23,6 +23,7 @@ from pymongo.errors import AutoReconnect, ServerSelectionTimeoutError
 from api import doctor_service
 from api.db_utils import get_db_name, get_latest_batch_date, get_mongo_client
 from api import auth as shared_auth
+from api import user_admin
 from api.chatbot_service import answer_question
 from api.chatbot_queries import _patient_id_filter
 from api.gemini_insights import generate_roi_and_counterfactual, generate_week_narrative
@@ -70,20 +71,21 @@ def require_manual_entry():
             detail="Manual patient entry is turned off on this deployment.")
 
 
-# Paths a hosting platform probes to decide whether the container is alive.
-# They must answer before the key is checked, or a correct deployment looks
-# dead to its own health check.
-# /auth/* is the shared login, called by the portal before anyone has a token
-# and from an origin that does not hold our service key. Putting it behind the
-# API key would mean shipping that key to the browser to let people sign in,
-# which defeats the point of having one.
-_UNAUTHENTICATED_PATHS = {"/healthz", "/auth/signup", "/auth/login",
-                         "/auth/me", "/auth/refresh", "/auth/config"}
+# /healthz is probed by the hosting platform to decide whether the container is
+# alive; it must answer before the key is checked, or a correct deployment
+# looks dead to its own health check.
+# /auth/* is the shared login and User Management. It is called by the portal
+# before anyone has a token, and by GLP-1, which does not hold our service key.
+# Putting it behind the key would mean shipping the key to every browser, which
+# defeats the point of having one. Everything under /auth/ that needs a user
+# checks the bearer token itself.
+def _skips_api_key(path: str) -> bool:
+    return path == "/healthz" or path.startswith("/auth/")
 
 
 def require_api_key(request: Request,
                     x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
-    if request.url.path in _UNAUTHENTICATED_PATHS:
+    if _skips_api_key(request.url.path):
         return
     if API_KEY and x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
@@ -156,7 +158,7 @@ def auth_me(authorization: Optional[str] = Header(default=None)):
     from the token, so a role or access change takes effect without re-issuing.
     Answers for pending accounts too, so they can be told they are pending."""
     account = shared_auth.authenticate(db, shared_auth.bearer_token(authorization),
-                                       allow_pending=True)
+                                       allow_pending=True, allow_password_change=True)
     return shared_auth.public_view(account)
 
 
@@ -165,6 +167,99 @@ def auth_refresh(authorization: Optional[str] = Header(default=None)):
     """A new token carrying the account's current role and status, with the
     same expiry as the old one. See api/auth.py:refresh."""
     return shared_auth.refresh(db, shared_auth.bearer_token(authorization))
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@app.post("/auth/change-password")
+def auth_change_password(body: ChangePasswordRequest,
+                         authorization: Optional[str] = Header(default=None)):
+    """Replace your own password. The only data-free call an account on a
+    temporary password may make besides /auth/me and /auth/refresh."""
+    return user_admin.change_password(db, shared_auth.bearer_token(authorization),
+                                      body.current_password, body.new_password)
+
+
+# ---------------------------------------------------------------------------
+# User Management - see api/user_admin.py for who may do what
+# ---------------------------------------------------------------------------
+def require_manager(authorization: Optional[str] = Header(default=None)) -> dict:
+    account = shared_auth.authenticate(db, shared_auth.bearer_token(authorization))
+    user_admin.require_manager(account)
+    return account
+
+
+class OrgRequest(BaseModel):
+    name: str
+
+
+class CreateUserRequest(BaseModel):
+    email: str
+    role: str
+    name: str = ""
+    hospital_id: Optional[str] = None
+    insurer_id: Optional[str] = None
+
+
+class UpdateUserRequest(BaseModel):
+    role: Optional[str] = None
+    status: Optional[str] = None
+    hospital_id: Optional[str] = None
+    insurer_id: Optional[str] = None
+    name: Optional[str] = None
+
+
+class ImportUsersRequest(BaseModel):
+    csv: str
+    hospital_id: Optional[str] = None
+    insurer_id: Optional[str] = None
+
+
+@app.get("/auth/admin/hospitals")
+def admin_list_hospitals(actor: dict = Depends(require_manager)):
+    return user_admin.list_hospitals(db, actor)
+
+
+@app.post("/auth/admin/hospitals", status_code=201)
+def admin_create_hospital(body: OrgRequest, actor: dict = Depends(require_manager)):
+    return user_admin.create_hospital(db, actor, body.name)
+
+
+@app.get("/auth/admin/insurers")
+def admin_list_insurers(actor: dict = Depends(require_manager)):
+    return user_admin.list_insurers(db, actor)
+
+
+@app.post("/auth/admin/insurers", status_code=201)
+def admin_create_insurer(body: OrgRequest, actor: dict = Depends(require_manager)):
+    return user_admin.create_insurer(db, actor, body.name)
+
+
+@app.get("/auth/admin/users")
+def admin_list_users(hospital_id: Optional[str] = None, status: Optional[str] = None,
+                     actor: dict = Depends(require_manager)):
+    return user_admin.list_users(db, actor, hospital_id, status)
+
+
+@app.post("/auth/admin/users", status_code=201)
+def admin_create_user(body: CreateUserRequest, actor: dict = Depends(require_manager)):
+    return user_admin.create_user(db, actor, body.email, body.role, body.name,
+                                  body.hospital_id, body.insurer_id)
+
+
+@app.patch("/auth/admin/users/{user_id}")
+def admin_update_user(user_id: str, body: UpdateUserRequest,
+                      actor: dict = Depends(require_manager)):
+    return user_admin.update_user(db, actor, user_id, body.role, body.status,
+                                  body.hospital_id, body.insurer_id, body.name)
+
+
+@app.post("/auth/admin/users/import")
+def admin_import_users(body: ImportUsersRequest, actor: dict = Depends(require_manager)):
+    return user_admin.import_users(db, actor, body.csv, body.hospital_id, body.insurer_id)
 
 
 @app.get("/auth/config")

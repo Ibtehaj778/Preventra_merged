@@ -358,6 +358,32 @@
     <button type="button" id="check-again">Check again</button>
   </main>
 
+  <!-- ── replace a temporary password ──────────────────────────────────────── -->
+  <main class="card hidden" id="password-view">
+    <div class="who">
+      <div class="who-brand">
+        <img src="logo.png" alt="" onerror="this.remove()">
+        <div><b id="password-email">—</b><br><span>First sign-in</span></div>
+      </div>
+      <button class="ghost" id="password-sign-out" style="width:auto;padding:6px 12px;margin:0">Sign out</button>
+    </div>
+    <h1>Set a new password</h1>
+    <p class="sub">
+      Your administrator gave you a temporary password. Choose your own to
+      continue - the temporary one stops working as soon as you do.
+    </p>
+    <div class="error hidden" id="password-error"></div>
+    <form id="password-form">
+      <label for="pw-current">Temporary password</label>
+      <input id="pw-current" type="password" autocomplete="current-password" required>
+      <label for="pw-new">New password (at least 8 characters)</label>
+      <input id="pw-new" type="password" autocomplete="new-password" minlength="8" required>
+      <label for="pw-confirm">Repeat new password</label>
+      <input id="pw-confirm" type="password" autocomplete="new-password" minlength="8" required>
+      <button type="submit" id="password-button">Save and continue</button>
+    </form>
+  </main>
+
   <!-- ── choose an app ───────────────────────────────────────────────────────── -->
   <main class="card wide hidden" id="apps-view">
     <div class="who">
@@ -465,6 +491,7 @@
 
       $('login-view').classList.add('hidden');
       $('pending-view').classList.add('hidden');
+      $('password-view').classList.add('hidden');
       $('apps-view').classList.remove('hidden');
     }
 
@@ -472,12 +499,32 @@
       $('pending-email').textContent = claims.email || '—';
       $('login-view').classList.add('hidden');
       $('apps-view').classList.add('hidden');
+      $('password-view').classList.add('hidden');
       $('pending-view').classList.remove('hidden');
     }
 
-    /** Tiles for an approved account, the waiting screen for a pending one. */
+    // The password typed into the sign-in form, kept only until the "set a new
+    // password" screen has used it, so someone who just typed their temporary
+    // password is not asked for it twice.
+    let lastPassword = '';
+
+    function renderPasswordChange(claims) {
+      $('password-email').textContent = claims.email || '—';
+      $('password-form').reset();
+      $('pw-current').value = lastPassword;
+      lastPassword = '';
+      $('password-error').classList.add('hidden');
+      for (const id of ['login-view', 'apps-view', 'pending-view']) $(id).classList.add('hidden');
+      $('password-view').classList.remove('hidden');
+    }
+
+    /** The waiting screen for a pending account, the new-password screen for one
+     *  still on a temporary password, and the tiles for everyone else. The
+     *  backends enforce the same order; this only shows the right screen. */
     function show(token, claims) {
-      return claims.status === 'pending' ? renderPending(claims) : renderApps(token, claims);
+      if (claims.status === 'pending') return renderPending(claims);
+      if (claims.must_change_password) return renderPasswordChange(claims);
+      return renderApps(token, claims);
     }
 
     function signIn(token) {
@@ -510,8 +557,10 @@
 
     function signOut() {
       store.del(TOKEN_KEY);
+      lastPassword = '';
       $('apps-view').classList.add('hidden');
       $('pending-view').classList.add('hidden');
+      $('password-view').classList.add('hidden');
       $('login-view').classList.remove('hidden');
       $('login-form').reset();
       clearError();
@@ -528,6 +577,7 @@
       try {
         const path = MODE === 'signup' ? '/auth/signup' : '/auth/login';
         const payload = { email: $('email').value, password: $('password').value };
+        lastPassword = payload.password;
 
         const response = await fetch(`${CONFIG.AUTH_BASE_URL.replace(/\/$/, '')}${path}`, {
           method: 'POST',
@@ -586,6 +636,35 @@
 
     $('sign-out').addEventListener('click', signOut);
     $('pending-sign-out').addEventListener('click', signOut);
+    $('password-sign-out').addEventListener('click', signOut);
+
+    $('password-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const box = $('password-error');
+      const fail = (message) => { box.textContent = message; box.classList.remove('hidden'); };
+      box.classList.add('hidden');
+      if ($('pw-new').value !== $('pw-confirm').value) return fail('The two new passwords do not match.');
+
+      const token = store.get(TOKEN_KEY);
+      if (!token) return signOut();
+      const button = $('password-button');
+      button.disabled = true;
+      try {
+        const response = await fetch(`${CONFIG.AUTH_BASE_URL.replace(/\/$/, '')}/auth/change-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ current_password: $('pw-current').value,
+                                 new_password: $('pw-new').value }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return fail(body.detail || `Could not change the password (${response.status}).`);
+        signIn(body.token);             // carries must_change_password: false
+      } catch (err) {
+        fail(`Could not reach the auth service - ${err.message}`);
+      } finally {
+        button.disabled = false;
+      }
+    });
 
     $('check-again').addEventListener('click', async () => {
       const stored = store.get(TOKEN_KEY);

@@ -93,6 +93,7 @@ export function AuthProvider({ children }) {
           role:        claims.role,
           status:      claims.status,
           hospital_id: claims.hospital_id,
+          must_change_password: !!claims.must_change_password,
           app_access:  claims.app_access || [],
         };
         localStorage.setItem(TOKEN_KEY, _incomingToken);
@@ -141,10 +142,12 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      // A pending account is not signed in as far as this app is concerned: it
-      // goes back to the portal, which shows the "waiting for approval" screen.
-      // The backend refuses it data regardless; this only avoids a dead screen.
-      value={{ token, user, isAuthenticated: !!token && user?.status !== 'pending',
+      // A pending account, or one still on a temporary password, is not signed
+      // in as far as this app is concerned: it goes back to the portal, which
+      // shows the "waiting for approval" or "set a new password" screen. The
+      // backend refuses it data regardless; this only avoids a dead screen.
+      value={{ token, user,
+               isAuthenticated: !!token && user?.status !== 'pending' && !user?.must_change_password,
                login, register, logout }}
     >
       {children}

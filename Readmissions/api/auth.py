@@ -81,9 +81,16 @@ ROLES = ("superadmin", "hospital_admin", "doctor", "nurse", "case_manager",
          "insurer", "patient")
 STATUSES = ("pending", "active")
 
-# What a self-signup becomes. It also sees nothing until an admin approves it
-# and attaches it to a hospital.
+# What a self-signup becomes when it names no role (an older portal, or a
+# script). It sees nothing until an admin approves it either way.
 DEFAULT_ROLE = "case_manager"
+
+# The roles someone may ASK for when they sign up. Asking grants nothing: the
+# account is pending, sees no patients, and has no hospital or insurer until an
+# admin approves it - confirming the role or changing it as they do. What it
+# buys is a sign-up list the admin can sort by who people say they are.
+# superadmin is never on offer; that account comes from scripts/create_superadmin.py.
+SIGNUP_ROLES = ("doctor", "nurse", "case_manager", "hospital_admin", "insurer", "patient")
 
 # Roles that work for one hospital. superadmin belongs to none, because it
 # oversees all of them; insurer belongs to an insurer organisation instead.
@@ -252,19 +259,40 @@ def _now() -> str:
 
 
 # ----------------------------------------------------------------------- signup
-def signup(db, email: str, password: str, app_access: Optional[list] = None) -> dict:
+def requested_role(role: Optional[str]) -> str:
+    """The role a sign-up asks for, from SIGNUP_ROLES; case_manager if none."""
+    if role is None or not str(role).strip():
+        return DEFAULT_ROLE
+    key = str(role).strip().lower().replace(" ", "_").replace("-", "_")
+    if key == "superadmin":
+        raise HTTPException(status_code=422,
+                            detail="Superadmin accounts are created by our team, not by signing up")
+    if key not in SIGNUP_ROLES:
+        raise HTTPException(status_code=422,
+                            detail=f"Choose one of: {', '.join(SIGNUP_ROLES)}")
+    return key
+
+
+def signup(db, email: str, password: str, app_access: Optional[list] = None,
+           role: Optional[str] = None) -> dict:
     """Create a self-service account and return a signed token for it.
 
-    The account is a pending case_manager with no hospital. Nobody chooses their
-    own role or hospital: typing a hospital's name must not be enough to see its
-    patients. An admin approves the account and attaches it to a hospital; until
-    then it can sign in, but every data request is refused.
+    The person may say which role they are joining as (SIGNUP_ROLES), which
+    files the request under that role for the admin. It stays a request: the
+    account is pending, with no hospital, and every data request is refused
+    until an admin approves it - confirming or changing the role and attaching
+    it to a hospital or insurer. Nobody chooses their own hospital: typing a
+    hospital's name must never be enough to see its patients.
     """
     email = _validate_credentials(email, password)
+    role = requested_role(role)
     now = _now()
     doc = {"email": email,
            "password_hash": hash_password(password),
-           "role": DEFAULT_ROLE,
+           "role": role,
+           # Kept after approval too, so an admin can see what was asked for
+           # even once the role has been changed.
+           "requested_role": role,
            "status": "pending",
            "hospital_id": None,
            "app_access": list(app_access) if app_access else list(DEFAULT_APP_ACCESS),
@@ -422,4 +450,5 @@ def auth_config() -> dict:
     never the secret itself, so a broken deploy can be diagnosed over HTTP."""
     return {"secret_configured": bool(SHARED_SECRET_KEY), "algorithm": ALGORITHM,
             "identity_database": IDENTITY_DB, "token_ttl_seconds": TOKEN_TTL_SECONDS,
-            "default_app_access": list(DEFAULT_APP_ACCESS), "roles": list(ROLES)}
+            "default_app_access": list(DEFAULT_APP_ACCESS), "roles": list(ROLES),
+            "signup_roles": list(SIGNUP_ROLES)}

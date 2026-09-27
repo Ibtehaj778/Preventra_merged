@@ -200,6 +200,33 @@ def test_the_superadmin_lists_everyone_and_can_filter(db, world):
         == {"admin@b.org"}
 
 
+def test_sign_ups_can_be_listed_by_the_role_they_asked_for(db, world):
+    auth.signup(db, "doc@x.org", "their-own-password", role="doctor")
+    auth.signup(db, "nurse@x.org", "their-own-password", role="nurse")
+    pending_doctors = ua.list_users(db, world["sa"], status="pending", role="doctor")
+    assert [(u["email"], u["requested_role"]) for u in pending_doctors] == [("doc@x.org", "doctor")]
+
+
+def test_approval_keeps_the_requested_role_or_changes_it(db, world):
+    auth.signup(db, "doc@x.org", "their-own-password", role="doctor")
+    auth.signup(db, "cm@x.org", "their-own-password", role="hospital_admin")
+    kept = ua.update_user(db, world["sa"], uid(db, "doc@x.org"), status="active",
+                          hospital_id="demo-hospital-a")
+    assert (kept["role"], kept["status"]) == ("doctor", "active")
+    changed = ua.update_user(db, world["sa"], uid(db, "cm@x.org"), status="active",
+                             role="case_manager", hospital_id="demo-hospital-a")
+    assert (changed["role"], changed["requested_role"]) == ("case_manager", "hospital_admin")
+
+
+def test_a_hospital_admin_approves_by_email_with_its_own_choice_of_role(db, world):
+    """A request to be a hospital admin does not let one hospital admin make
+    another: it can only approve the person into its staff roles."""
+    auth.signup(db, "someone@a.org", "their-own-password", role="hospital_admin")
+    refused(403, ua.create_user, db, world["admin_a"], "someone@a.org", "hospital_admin")
+    out = ua.create_user(db, world["admin_a"], "someone@a.org", "case_manager")
+    assert (out["user"]["role"], out["user"]["hospital_id"]) == ("case_manager", "demo-hospital-a")
+
+
 def test_listed_accounts_never_carry_a_password_hash(db, world):
     assert all("password_hash" not in u for u in ua.list_users(db, world["sa"]))
 

@@ -83,14 +83,26 @@ def test_the_login_endpoints_stay_open(main, db):
                                             "password": "correct-horse"}).status_code == 200
 
 
-def test_signup_ignores_a_role_or_hospital_sent_by_the_client(main, db):
-    """Older portals still send them. Neither may stick."""
+def test_signup_files_the_requested_role_but_never_a_hospital(main, db):
+    """The role is a request an admin confirms; a hospital sent by the client
+    is ignored, so typing a hospital's name never places anyone in it."""
+    client = TestClient(main.app)
+    r = client.post("/auth/signup", json={"email": "doc@test.com", "password": "correct-horse",
+                                          "role": "doctor", "org_name": "City Hospital",
+                                          "hospital_id": "city-hospital"})
+    assert (r.json()["user"]["role"], r.json()["user"]["status"]) == ("doctor", "pending")
+    assert r.json()["user"]["hospital_id"] is None
+    token = r.json()["token"]
+    assert TestClient(main.app).get("/api/patients", headers={"Authorization": f"Bearer {token}"}
+                                    ).status_code == 403
+
+
+def test_signup_cannot_ask_to_be_a_superadmin(main, db):
     client = TestClient(main.app)
     r = client.post("/auth/signup", json={"email": "sneaky@test.com", "password": "correct-horse",
-                                          "role": "superadmin", "org_name": "City Hospital"})
-    assert r.json()["user"]["role"] == "case_manager"
-    assert r.json()["user"]["status"] == "pending"
-    assert r.json()["user"]["hospital_id"] is None
+                                          "role": "superadmin"})
+    assert r.status_code == 422
+    assert auth.users(db).count_documents({"email": "sneaky@test.com"}) == 0
 
 
 def test_me_and_refresh_answer_for_a_pending_account(main, db):

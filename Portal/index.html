@@ -116,7 +116,7 @@
       margin: 0 0 6px;
     }
 
-    input {
+    input, select {
       width: 100%;
       padding: 10px 12px;
       margin-bottom: 16px;
@@ -127,7 +127,13 @@
       border-radius: 8px;
     }
 
-    input:focus-visible {
+    .role-hint {
+      color: var(--muted);
+      font-size: 13px;
+      margin: -10px 0 16px;
+    }
+
+    input:focus-visible, select:focus-visible {
       outline: 2px solid var(--brand);
       outline-offset: 1px;
     }
@@ -316,9 +322,11 @@
     <div class="error hidden" id="login-error"></div>
 
     <!-- One form for both actions: it is the same request to a different path,
-         and a second page would duplicate the error handling. Sign-up asks for
-         no role and no hospital - an administrator assigns both, so typing a
-         hospital's name is never enough to see its patients. -->
+         and a second page would duplicate the error handling. Sign-up asks which
+         role the person is joining as - a request that files them for the
+         administrator, who confirms or changes it on approval. It never asks
+         for a hospital: an administrator assigns that, so typing a hospital's
+         name is never enough to see its patients. -->
     <form id="login-form">
       <label for="email">Email</label>
       <input id="email" name="email" type="email" autocomplete="username" required>
@@ -326,10 +334,24 @@
       <label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required>
 
-      <p id="signup-note" class="sub hidden">
-        New accounts wait for an administrator to approve them and assign
-        your hospital and role.
-      </p>
+      <div id="signup-fields" class="hidden">
+        <label for="signup-role">I am joining as</label>
+        <select id="signup-role" name="role">
+          <option value="">Choose your role…</option>
+          <option value="doctor">Doctor</option>
+          <option value="nurse">Nurse or caretaker</option>
+          <option value="case_manager">Case manager</option>
+          <option value="hospital_admin">Hospital administrator</option>
+          <option value="insurer">Insurer</option>
+          <option value="patient">Patient</option>
+        </select>
+        <p class="role-hint" id="role-hint"></p>
+        <p class="sub">
+          New accounts wait for an administrator to approve them. They confirm
+          your role and assign your hospital; until then you can sign in but
+          see no patient data.
+        </p>
+      </div>
 
       <button type="submit" id="login-button">Sign in</button>
     </form>
@@ -351,9 +373,10 @@
     </div>
     <h1>Your account is waiting for approval</h1>
     <p class="sub">
-      An administrator needs to approve it and assign your hospital and role.
-      You can close this page; once you are approved, signing in takes you
-      straight to your applications.
+      <span id="pending-role"></span>
+      An administrator needs to approve it, confirm your role and assign your
+      hospital. You can close this page; once you are approved, signing in
+      takes you straight to your applications.
     </p>
     <button type="button" id="check-again">Check again</button>
   </main>
@@ -451,6 +474,19 @@
       nurse: 'Nurse', case_manager: 'Case manager', insurer: 'Insurer', patient: 'Patient',
     };
 
+    // What each role on the sign-up form means, so people pick the right one.
+    // The choices must stay within SIGNUP_ROLES in Readmissions/api/auth.py.
+    const ROLE_HINTS = {
+      doctor: 'Sees and treats the patients assigned to you.',
+      nurse: 'Follows up on the patients assigned to you.',
+      case_manager: 'Coordinates care across all of your hospital\'s patients: follow-ups, and ' +
+                    'assigning doctors and nurses. No user or cost management.',
+      hospital_admin: 'Runs your hospital\'s account: staff, users and costs. Opens a patient\'s ' +
+                      'clinical details only with a reason, which is logged.',
+      insurer: 'Sees your members across hospitals, mainly costs and outcomes.',
+      patient: 'Sees your own record only.',
+    };
+
     function renderApps(token, claims) {
       $('who-email').textContent = claims.email || '—';
       $('who-org').textContent =
@@ -497,6 +533,8 @@
 
     function renderPending(claims) {
       $('pending-email').textContent = claims.email || '—';
+      $('pending-role').textContent = claims.role
+        ? `You asked to join as: ${ROLE_LABELS[claims.role] || claims.role}.` : '';
       $('login-view').classList.add('hidden');
       $('apps-view').classList.add('hidden');
       $('password-view').classList.add('hidden');
@@ -563,7 +601,8 @@
       $('password-view').classList.add('hidden');
       $('login-view').classList.remove('hidden');
       $('login-form').reset();
-      clearError();
+      $('role-hint').textContent = '';
+      setMode('login');             // back to "Sign in", not the sign-up form
     }
 
     // ── login ────────────────────────────────────────────────────────────────────
@@ -577,6 +616,7 @@
       try {
         const path = MODE === 'signup' ? '/auth/signup' : '/auth/login';
         const payload = { email: $('email').value, password: $('password').value };
+        if (MODE === 'signup') payload.role = $('signup-role').value;
         lastPassword = payload.password;
 
         const response = await fetch(`${CONFIG.AUTH_BASE_URL.replace(/\/$/, '')}${path}`, {
@@ -624,7 +664,8 @@
       const up = mode === 'signup';
       $('form-title').textContent = up ? 'Create account' : 'Sign in';
       $('login-button').textContent = up ? 'Create account' : 'Sign in';
-      $('signup-note').classList.toggle('hidden', !up);
+      $('signup-fields').classList.toggle('hidden', !up);
+      $('signup-role').required = up;
       $('password').setAttribute('autocomplete', up ? 'new-password' : 'current-password');
       $('switch-text').textContent = up ? 'Already have an account?' : 'No account yet?';
       $('switch-mode').textContent = up ? 'Sign in' : 'Create one';
@@ -633,6 +674,9 @@
 
     $('switch-mode').addEventListener('click',
       () => setMode(MODE === 'login' ? 'signup' : 'login'));
+
+    $('signup-role').addEventListener('change',
+      () => { $('role-hint').textContent = ROLE_HINTS[$('signup-role').value] || ''; });
 
     $('sign-out').addEventListener('click', signOut);
     $('pending-sign-out').addEventListener('click', signOut);

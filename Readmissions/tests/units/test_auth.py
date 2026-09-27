@@ -70,6 +70,32 @@ def test_a_self_signup_is_a_pending_case_manager_with_no_hospital(db):
         ("case_manager", "pending", None)
 
 
+@pytest.mark.parametrize("asked, filed", [("doctor", "doctor"), ("Nurse", "nurse"),
+                                           ("case manager", "case_manager"),
+                                           ("hospital_admin", "hospital_admin"),
+                                           ("insurer", "insurer"), ("patient", "patient"), ("", "case_manager")])
+def test_a_self_signup_is_filed_under_the_role_it_asks_for(db, asked, filed):
+    c = claims_of(auth.signup(db, "a@b.com", "correct-horse", role=asked))
+    assert (c["role"], c["status"], c["hospital_id"]) == (filed, "pending", None)
+    assert auth.users(db).find_one({"email": "a@b.com"})["requested_role"] == filed
+
+
+@pytest.mark.parametrize("asked", ["superadmin", "SuperAdmin", "admin", "god"])
+def test_a_self_signup_cannot_ask_for_superadmin_or_an_unknown_role(db, asked):
+    with pytest.raises(HTTPException) as e:
+        auth.signup(db, "a@b.com", "correct-horse", role=asked)
+    assert e.value.status_code == 422
+    assert auth.users(db).count_documents({}) == 0
+
+
+def test_asking_to_be_a_hospital_admin_grants_nothing_until_approved(db):
+    """The request files the account; it does not unlock anything."""
+    token = auth.signup(db, "a@b.com", "correct-horse", role="hospital_admin")["token"]
+    with pytest.raises(HTTPException) as e:
+        auth.authenticate(db, token)
+    assert e.value.status_code == 403
+
+
 def test_signup_stores_a_bcrypt_hash_and_never_the_password(db):
     auth.signup(db, "a@b.com", "correct-horse")
     stored = auth.users(db).find_one({"email": "a@b.com"})

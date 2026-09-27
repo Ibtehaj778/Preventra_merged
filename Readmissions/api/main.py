@@ -147,6 +147,9 @@ def healthz():
 class SignupRequest(BaseModel):
     email: str
     password: str
+    # The role they are asking for - a request, confirmed by an admin on
+    # approval. See auth.SIGNUP_ROLES.
+    role: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -156,10 +159,11 @@ class LoginRequest(BaseModel):
 
 @app.post("/auth/signup")
 def auth_signup(body: SignupRequest):
-    """Create a pending account and return a token for it. The portal uses the
-    token to show the "waiting for approval" screen; every data request made
-    with it is refused until an admin approves the account."""
-    return shared_auth.signup(db, body.email, body.password)
+    """Create a pending account, filed under the role it asks for, and return a
+    token for it. The portal uses the token to show the "waiting for approval"
+    screen; every data request made with it is refused until an admin approves
+    the account. Any hospital the client sends is ignored."""
+    return shared_auth.signup(db, body.email, body.password, role=body.role)
 
 
 @app.post("/auth/login")
@@ -255,8 +259,8 @@ def admin_create_insurer(body: OrgRequest, actor: dict = Depends(require_manager
 
 @app.get("/auth/admin/users")
 def admin_list_users(hospital_id: Optional[str] = None, status: Optional[str] = None,
-                     actor: dict = Depends(require_manager)):
-    return user_admin.list_users(db, actor, hospital_id, status)
+                     role: Optional[str] = None, actor: dict = Depends(require_manager)):
+    return user_admin.list_users(db, actor, hospital_id, status, role)
 
 
 @app.post("/auth/admin/users", status_code=201)

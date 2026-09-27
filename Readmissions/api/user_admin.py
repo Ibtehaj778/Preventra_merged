@@ -13,11 +13,14 @@ Who may do what - enforced here, never only in a frontend:
 No path here can create a superadmin or promote anyone to one; that is
 scripts/create_superadmin.py, run by someone with direct cluster access.
 
-Approving a self-signup: a hospital admin adds the person by email. If that
-email is a pending account not yet attached anywhere, it is attached and
-activated instead of being refused as a duplicate. So hospital admins approve
-their own people without ever seeing a list of other hospitals' signups; only
-the superadmin sees every pending account.
+Approving a self-signup: a sign-up names the role it is asking for (see
+auth.SIGNUP_ROLES) but no hospital, and waits as pending. The superadmin sees
+every pending account, filterable by that requested role, and approves it with
+a hospital or insurer - keeping the role or changing it. A hospital admin
+approves by adding the person's email: if it is a pending account not yet
+attached anywhere, it is attached and activated with the role the admin picks,
+instead of being refused as a duplicate. So hospital admins approve their own
+people without ever seeing a list of other hospitals' sign-ups.
 """
 from __future__ import annotations
 
@@ -86,6 +89,8 @@ def admin_view(account: dict) -> dict:
     return {**auth.public_view(account),
             "name": account.get("name", ""),
             "insurer_id": account.get("insurer_id"),
+            # What a self-signup asked to be; None for accounts an admin created.
+            "requested_role": account.get("requested_role"),
             "must_change_password": bool(account.get("must_change_password")),
             "created_at": account.get("created_at", "")}
 
@@ -179,7 +184,7 @@ def _may_manage(actor: dict, target: dict) -> bool:
 
 # ------------------------------------------------------------ accounts
 def list_users(db, actor: dict, hospital_id: Optional[str] = None,
-               status: Optional[str] = None) -> list:
+               status: Optional[str] = None, role: Optional[str] = None) -> list:
     require_manager(actor)
     query: dict = {}
     if actor["role"] == "hospital_admin":
@@ -188,6 +193,8 @@ def list_users(db, actor: dict, hospital_id: Optional[str] = None,
         query["hospital_id"] = hospital_id
     if status:
         query["status"] = status
+    if role:
+        query["role"] = role
     return [admin_view(u) for u in
             auth.users(db).find(query, {"password_hash": 0}).sort("created_at", -1)]
 

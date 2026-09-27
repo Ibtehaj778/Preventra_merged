@@ -41,7 +41,8 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
   const [users, setUsers] = useState([]);
   const [hospitals, setHospitals] = useState([]);
   const [insurers, setInsurers] = useState([]);
-  const [filter, setFilter] = useState({ hospital_id: '', status: '' });
+  // role files the list by role - including what each pending sign-up asked to be.
+  const [filter, setFilter] = useState({ hospital_id: '', status: '', role: '' });
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -135,6 +136,12 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
               <option value="">Any status</option>
               <option value="pending">Pending</option>
               <option value="active">Active</option>
+            </select>
+            <select className={input} value={filter.role}
+                    onChange={(e) => setFilter({ ...filter, role: e.target.value })}>
+              <option value="">Any role</option>
+              {Object.entries(ROLE_LABELS).filter(([r]) => r !== 'superadmin').map(([r, label]) => (
+                <option key={r} value={r}>{label}</option>))}
             </select>
           </div>
         </div>
@@ -269,6 +276,13 @@ function UserRow({ user, me, myId, isSuper, assignable, hospitals, insurers, hos
         <div className="text-xs text-gray-500">
           {user.name || '—'}{user.must_change_password && ' · must set a password'}
         </div>
+        {/* A sign-up names the role it wants; the admin confirms or changes it
+            with the role picker before approving. */}
+        {user.status === 'pending' && user.requested_role && (
+          <div className="mt-0.5 text-xs font-medium text-amber-700">
+            Signed up as {ROLE_LABELS[user.requested_role] || user.requested_role}
+          </div>
+        )}
       </td>
       <td className="py-2 pr-3">
         {editable ? (

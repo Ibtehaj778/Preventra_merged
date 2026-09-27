@@ -242,10 +242,11 @@ export default function ExecutiveSummary() {
       </div>
 
       {/* ── Zone C — Dropout Timeline + Drivers / Wasted Spend ──────── */}
-      <div className="exec-bottom-grid">
+      {[isCostView, ...(isSuperadmin ? [false] : [])].map((showCost) => (
+      <div key={String(showCost)} className="exec-bottom-grid">
         {/* Zone C left — role-based */}
         <div className="card p-5 animate-fade-up stagger-5">
-          {isCostView ? (() => {
+          {showCost ? (() => {
             const avgCost = summaryKPIs.avgAnnualCost;
             const ranked = adherenceBySegment
               .map(s => ({
@@ -342,7 +343,7 @@ export default function ExecutiveSummary() {
 
         {/* Global SHAP drivers or wasted spend (role-based) */}
         <div className="card p-5 animate-fade-up stagger-6">
-          {isCostView ? (
+          {showCost ? (
             <>
               <SectionHeader title="Wasted Spend by Segment" sub="Annual drug spend on patients who discontinue" />
               <ResponsiveContainer width="100%" height={240}>
@@ -400,6 +401,7 @@ export default function ExecutiveSummary() {
           )}
         </div>
       </div>
+      ))}
     </div>
   );
 }

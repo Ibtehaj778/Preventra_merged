@@ -16,6 +16,35 @@ const API_KEY = import.meta.env.VITE_API_KEY || '';
 export const MANUAL_ENTRY_ENABLED =
   String(import.meta.env.VITE_MANUAL_ENTRY_ENABLED ?? 'false').trim().toLowerCase() === 'true';
 
+// ─── Hospital picker ───────────────────────────────────────────────────────
+// The superadmin can look at one hospital at a time. The choice rides on every
+// request as a header, and the backend ignores it for everyone else. Kept for
+// the tab only, like the token.
+const HOSPITAL_KEY = 'preventra.actingHospital';
+
+export function getActingHospital() {
+  try { return window.sessionStorage.getItem(HOSPITAL_KEY) || ''; } catch { return ''; }
+}
+
+export function setActingHospital(hospitalId) {
+  try {
+    if (hospitalId) window.sessionStorage.setItem(HOSPITAL_KEY, hospitalId);
+    else window.sessionStorage.removeItem(HOSPITAL_KEY);
+  } catch { /* private mode: the picker just will not stick */ }
+}
+
+/** An API refusal, keeping the status and - for the "give a reason" refusal -
+ *  its code, so a page can show the prompt instead of an error. */
+export class ApiError extends Error {
+  constructor(message, status, code) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export const isReasonRequired = (err) => err?.code === 'reason_required';
+
 // ─── Generic fetch helper ──────────────────────────────────────────────────
 async function apiFetch(path, options = {}) {
   const headers = { ...(options.headers || {}) };
@@ -26,14 +55,21 @@ async function apiFetch(path, options = {}) {
   // "this person". The backend refuses every /api call without it.
   const token = getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const hospital = getActingHospital();
+  if (hospital) headers['X-Hospital-Id'] = hospital;
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   // The session is over - the token expired or the account was removed. Send
   // them to sign in again rather than leave a dashboard of failed requests.
   if (res.status === 401) signOut();
   if (!res.ok) {
-    const detail = await res.json().catch(() => ({}));
-    throw new Error(detail?.detail || `API error ${res.status}: ${path}`);
+    const body = await res.json().catch(() => ({}));
+    const detail = body?.detail;
+    // FastAPI's validation errors are a list; the reason prompt's is an object.
+    const message = typeof detail === 'string' ? detail
+      : detail?.message || (Array.isArray(detail) ? detail.map((d) => d.msg).join('; ') : '')
+      || `API error ${res.status}: ${path}`;
+    throw new ApiError(message, res.status, detail?.code);
   }
   return res.json();
 }
@@ -47,6 +83,18 @@ const json = (body) => ({
 
 const RealAPI = {
   getSummary: () => apiFetch('/api/summary'),
+
+  // ─── Hospital pages ──────────────────────────────────────────────────────
+  // Overview layer only - counts, names, assignments. See api/hospital.py.
+  getOverview: () => apiFetch('/api/overview'),
+  getStaff: () => apiFetch('/api/staff'),
+  /** { patient_ids, doctor_id?, nurse_ids?, add_nurse_ids? } - see api/hospital.assign. */
+  setCareTeam: (body) => apiFetch('/api/care-team', json(body)),
+  /** A patient's overview layer, and whether their clinical details are open yet. */
+  getPatientSummary: (id) => apiFetch(`/api/patients/${encodeURIComponent(id)}/summary`),
+  /** Open one patient's clinical details with a reason (hospital admins, insurers). */
+  openPatient: (id, reason) =>
+    apiFetch(`/api/patients/${encodeURIComponent(id)}/open`, json({ reason })),
 
   // ─── Clinician loop ──────────────────────────────────────────────────────
   // Forecast -> alert -> the doctor's inbox -> a recommendation back on the
@@ -107,6 +155,10 @@ const RealAPI = {
     if (params.band && params.band !== 'All') qs.set('band', params.band);
     if (params.status && params.status !== 'All') qs.set('status', params.status);
     if (params.q) qs.set('q', params.q);
+    // Care-team filters, from the Staff page and the Overview.
+    for (const key of ['doctor', 'nurse', 'unassigned']) {
+      if (params[key]) qs.set(key, params[key]);
+    }
     // Returns { page, limit, total, data } — total is what drives pagination,
     // so the envelope is passed through rather than flattened to an array.
     return apiFetch(`/api/patients?${qs.toString()}`);
@@ -265,6 +317,16 @@ const RealAPI = {
 const API = USE_MOCK ? MockAPI : RealAPI;
 
 export const getSummary        = API.getSummary;
+
+// Hospital pages - live data only. A made-up staff list or care team would be
+// indistinguishable on screen from a real one.
+const HOSPITAL_MOCK_ERROR = 'The hospital pages require the real backend. Set VITE_USE_MOCK=false.';
+const realOnly = (fn) => (USE_MOCK ? () => Promise.reject(new Error(HOSPITAL_MOCK_ERROR)) : fn);
+export const getOverview       = realOnly(RealAPI.getOverview);
+export const getStaff          = realOnly(RealAPI.getStaff);
+export const setCareTeam       = realOnly(RealAPI.setCareTeam);
+export const getPatientSummary = realOnly(RealAPI.getPatientSummary);
+export const openPatient       = realOnly(RealAPI.openPatient);
 export const getPatients       = API.getPatients;
 export const getPatientGroups  = USE_MOCK
   ? () => Promise.resolve({ groups: [] })

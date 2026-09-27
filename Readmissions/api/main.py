@@ -25,6 +25,8 @@ from api.db_utils import get_db_name, get_latest_batch_date, get_mongo_client
 from api import auth as shared_auth
 from api import user_admin
 from api import access
+from api import access_log
+from api import hospital
 from api.chatbot_service import answer_question
 from api.chatbot_queries import _patient_id_filter
 from api.gemini_insights import generate_roi_and_counterfactual, generate_week_narrative
@@ -97,7 +99,19 @@ def require_api_key(request: Request,
 # cannot say who is asking. The account is re-read from the database on every
 # request, which is what makes an approval or a removal take effect immediately.
 # `db` is defined further down; the lambda looks it up when a request arrives.
-require_user = shared_auth.user_dependency(lambda: db, app="readmissions")
+_require_account = shared_auth.user_dependency(lambda: db, app="readmissions")
+
+
+def require_user(request: Request, account=Depends(_require_account),
+                 authorization: Optional[str] = Header(default=None),
+                 x_hospital_id: Optional[str] = Header(default=None, alias="X-Hospital-Id")):
+    """The account, plus two things every handler below may need: which
+    hospital the superadmin picked (the hospital picker sends it as a header;
+    nobody else can use it) and which sign-in this is, for the access log."""
+    if account is not None:
+        request.state.user = access.acting_as(account, x_hospital_id)
+        request.state.session = access_log.session_of(shared_auth.bearer_token(authorization))
+    return account
 
 app = FastAPI(title="Neuroshield API",
               dependencies=[Depends(require_api_key), Depends(require_user)])
@@ -263,6 +277,16 @@ def admin_import_users(body: ImportUsersRequest, actor: dict = Depends(require_m
     return user_admin.import_users(db, actor, body.csv, body.hospital_id, body.insurer_id)
 
 
+@app.get("/auth/admin/access-log")
+def admin_access_log(hospital_id: Optional[str] = None,
+                     app_name: Optional[str] = Query(None, alias="app"),
+                     limit: int = Query(200, ge=1, le=access_log.MAX_ENTRIES),
+                     actor: dict = Depends(require_manager)):
+    """Who opened which patient's clinical details, in both apps. A hospital
+    admin sees its own hospital's patients only (see api/access_log.py)."""
+    return access_log.entries(db, actor, hospital_id=hospital_id, app=app_name, limit=limit)
+
+
 @app.get("/auth/config")
 def auth_configuration():
     """Configuration state, carrying no secret. Lets a misconfigured deploy be
@@ -324,6 +348,7 @@ db = _mongo_client[get_db_name()]
 # that lives on a different database on the same cluster, so it is created here
 # rather than wherever the product collections are set up.
 shared_auth.ensure_indexes(db)
+access_log.ensure_indexes(db)
 
 
 # ---------------------------------------------------------------------------
@@ -347,9 +372,51 @@ def _require(request: Request, action: str) -> None:
     access.require(request.state.user, action)
 
 
+def _opened(request: Request) -> set:
+    """Patients whose clinical layer a reason role opened this sign-in."""
+    if not hasattr(request.state, "opened"):
+        user = request.state.user
+        request.state.opened = (access_log.opened(db, user, access_log.APP, request.state.session)
+                                if access.needs_reason(user) else set())
+    return request.state.opened
+
+
 def _view(request: Request) -> access.ScopedDB:
     """The database as this caller may read it."""
-    return access.ScopedDB(db, request.state.user, _scope(request))
+    return access.ScopedDB(db, request.state.user, _scope(request), opened=_opened(request))
+
+
+def _patient_hospital(patient_id) -> Optional[str]:
+    doc = db["care_actions"].find_one(_patient_id_filter(str(patient_id)), {"hospital_id": 1})
+    return (doc or {}).get("hospital_id")
+
+
+def _detail_access(request: Request, patient_id) -> str:
+    """open | granted | reason_required - for a patient already in scope."""
+    user = request.state.user
+    if not access.needs_reason(user):
+        return "open"
+    return "granted" if str(patient_id) in _opened(request) else "reason_required"
+
+
+def _require_detail(request: Request, patient_id) -> None:
+    """The clinical layer of one patient (see api/access.py).
+
+    404 outside the caller's patients, as everywhere. A hospital admin or an
+    insurer then needs a reason given this sign-in, or gets the structured 403
+    the frontends turn into the prompt. The superadmin is never asked, but its
+    first look at each patient in a sign-in is logged all the same.
+    """
+    _require_patient(request, patient_id)
+    user = request.state.user
+    if user["role"] == "superadmin":
+        session = request.state.session
+        if not access_log.has_opened(db, user, access_log.APP, patient_id, session):
+            access_log.record(db, user, access_log.APP, patient_id, _patient_hospital(patient_id),
+                              access.SUPERADMIN_REASON, session)
+        return
+    if _detail_access(request, patient_id) == "reason_required":
+        raise HTTPException(status_code=403, detail=access.REASON_REQUIRED)
 
 
 # ---------------------------------------------------------------------------
@@ -578,7 +645,10 @@ def get_patients(request: Request,
                  band: Optional[str] = Query(None, description="High | Medium | Low"),
                  status: Optional[str] = Query(None, description="monitoring status"),
                  q: Optional[str] = Query(None, description="diagnosis or ICD code search"),
-                 sort: str = Query("score-desc", description="<column>-asc|desc")):
+                 sort: str = Query("score-desc", description="<column>-asc|desc"),
+                 doctor: Optional[str] = Query(None, description="registry doctor_id"),
+                 nurse: Optional[str] = Query(None, description="nurse account id"),
+                 unassigned: Optional[str] = Query(None, description="doctor | nurse")):
     """
     The patient worklist.
 
@@ -600,6 +670,19 @@ def get_patients(request: Request,
     # Only the caller's patients. Part of the query itself, so the count cache
     # below - keyed by the query - can never hand one account another's total.
     query: dict = {"batch_date": batch_date, **access.scope_query(_scope(request))}
+    # The Staff page's drill-down and the Overview's "no doctor" link.
+    care = hospital.care_filter(db, _scope(request), doctor=doctor, nurse=nurse,
+                                unassigned=unassigned)
+    if care is not None:
+        query["$and"] = query.get("$and", []) + [{"patient_id": {"$in": access.id_variants(care)}}]
+    # A hospital admin or insurer sees the overview layer here. Filtering or
+    # sorting by diagnosis would hand back the clinical layer one row at a
+    # time, so those are ignored for them; search matches the patient id only.
+    redacted = access.needs_reason(request.state.user)
+    if redacted:
+        group = None
+        if sort.partition("-")[0] in access.CLINICAL_SORTS:
+            sort = "score-desc"
     # Conditions are matched on clinical_groups - every condition the patient
     # has - not clinical_group, which is only the plan they are monitored
     # under. Filtering on the plan hid a diabetic heart failure patient from
@@ -615,7 +698,10 @@ def get_patients(request: Request,
     if status and status != "All":
         query["monitoring_status"] = ({"$in": ["action_required", "deteriorating"]}
                                       if status == "NeedsAttention" else status)
-    if q:
+    if q and redacted:
+        query["$and"] = query.get("$and", []) + [
+            {"patient_id": {"$regex": re.escape(q.strip()), "$options": "i"}}]
+    elif q:
         # Anchored on the ICD code, contained for the diagnosis text. Escaped so
         # a stray bracket in a search box cannot become a regex.
         needle = re.escape(q.strip())
@@ -699,7 +785,16 @@ def get_patients(request: Request,
             "driver_1": format_driver_string(str(row.get("driver_1", ""))),
         })
 
-    return {"page": page, "limit": limit, "total": total, "data": data}
+    # Who looks after each patient, and who pays - the overview layer, so it is
+    # on every row for every role.
+    teams = hospital.care_teams(db, [r["id"] for r in data])
+    for r in data:
+        team = teams.get(r["id"], {})
+        r.update({"doctor": team.get("doctor"), "nurses": team.get("nurses", []),
+                  "insurer": team.get("insurer"), "hospital_id": team.get("hospital_id")})
+    if redacted:
+        data = [access.redact(r) for r in data]
+    return {"page": page, "limit": limit, "total": total, "data": data, "redacted": redacted}
 
 
 @app.get("/api/patient-groups")
@@ -745,7 +840,7 @@ def clear_cache(request: Request):
 
 @app.get("/api/patients/{patient_id}")
 def get_patient(patient_id: str, request: Request):
-    _require_patient(request, patient_id)
+    _require_detail(request, patient_id)
     batch_date = get_latest_batch_date(db, "patient_worklist")
     if not batch_date:
         raise HTTPException(status_code=404, detail="Patient worklist data not found")
@@ -1247,7 +1342,7 @@ _WEEKLY_STATUS_ACTIONS = {
 
 @app.get("/api/patients/{patient_id}/trend")
 def get_patient_trend(patient_id: str, request: Request):
-    _require_patient(request, patient_id)
+    _require_detail(request, patient_id)
     """Weekly readmission-risk trend for one patient: one point per batch run,
     with that week's drivers and an overall stability/deterioration verdict."""
     # Post-discharge weekly monitoring takes precedence: it is the series this
@@ -1414,7 +1509,7 @@ def get_ai_insights(payload: AIInsightsRequest, request: Request):
     auditable. Gemini is given that breakdown and writes only the narrative
     around it — it no longer prices anything or does the arithmetic.
     """
-    _require_patient(request, payload.patient_id)
+    _require_detail(request, payload.patient_id)
     roi = compute_roi(payload.risk_score, trend_status=payload.trend_status)
     try:
         narrative = generate_roi_and_counterfactual(
@@ -1467,7 +1562,7 @@ def get_week_narrative(payload: WeekNarrativeRequest, request: Request):
     series is where it is, using that admission's drivers, its delta from the
     previous admission, and the elapsed time between the two. Triggered per
     point from the risk trend module."""
-    _require_patient(request, payload.patient_id)
+    _require_detail(request, payload.patient_id)
     try:
         narrative = generate_week_narrative(
             patient_id=payload.patient_id,
@@ -1731,11 +1826,12 @@ def _run_pipeline_task(run_id: str, filepath: str):
 
 
 def _visible_runs(request: Request) -> list:
-    """Upload runs from the caller's own hospital; every run for the superadmin."""
+    """Upload runs from the caller's own hospital; every run for the superadmin
+    unless it picked one hospital."""
     user = request.state.user
-    if user["role"] == "superadmin":
+    if user["role"] == "superadmin" and not user.get("acting_hospital_id"):
         return _pipeline_runs
-    return [r for r in _pipeline_runs if r.get("hospital_id") == user.get("hospital_id")]
+    return [r for r in _pipeline_runs if r.get("hospital_id") == access.hospital_of(user)]
 
 
 @app.get("/api/pipeline/runs")
@@ -1763,7 +1859,7 @@ async def upload_pipeline_file(request: Request, file: UploadFile = File(...)):
         "patient_count": 0,
         "status": "Running",
         "current_step": "file_received",
-        "hospital_id": request.state.user.get("hospital_id"),
+        "hospital_id": access.hospital_of(request.state.user),
     }
     _pipeline_runs.append(run_record)
 
@@ -2012,7 +2108,7 @@ def add_to_worklist(payload: WorklistSaveRequest, request: Request):
         {"$setOnInsert": {"patient_id": payload.patient_id, "notes": [],
                           "coordinator_name": None, "assigned_at": None,
                           "assigned_nurse_ids": [],
-                          "hospital_id": request.state.user.get("hospital_id")}},
+                          "hospital_id": access.hospital_of(request.state.user)}},
         upsert=True,
     )
 
@@ -2047,7 +2143,7 @@ class UpdateCommitRequest(BaseModel):
 def get_patient_for_edit(patient_id: str, request: Request):
     """Return a patient's stored raw_inputs (prefilled with defaults for any
     missing field) plus their current risk_score/band, for the Update Patient form."""
-    _require_patient(request, patient_id)
+    _require_detail(request, patient_id)
     batch_date = get_latest_batch_date(db, "patient_worklist")
     if not batch_date:
         raise HTTPException(status_code=404, detail="Patient worklist data not found")
@@ -2076,6 +2172,7 @@ def predict_patient_update(patient_id: str, payload: ManualPatientInput, request
     """Recompute risk_score/band/drivers for an edited patient. Preview only — does NOT persist."""
     _require_patient(request, patient_id)
     _require(request, "edit_patients")
+    _require_detail(request, patient_id)
     scored = _score_manual_input(payload)
     discharge_date = payload.discharge_date or datetime.now().strftime("%Y-%m-%d")
 
@@ -2095,6 +2192,7 @@ def commit_patient_update(patient_id: str, payload: UpdateCommitRequest, request
     """
     _require_patient(request, patient_id)
     _require(request, "edit_patients")
+    _require_detail(request, patient_id)
     batch_date = get_latest_batch_date(db, "patient_worklist")
     if not batch_date:
         batch_date = datetime.now().strftime("%Y-%m-%d")
@@ -2211,6 +2309,95 @@ class AddNoteRequest(BaseModel):
     author: str = "Care Team"
 
 
+# ---------------------------------------------------------------------------
+# Hospital pages - see api/hospital.py. All overview layer: counts, names and
+# assignments, no clinical content, so no reason is asked for any of it.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/overview")
+def get_overview(request: Request):
+    """How is my hospital doing? Not for doctors and nurses, who land on their
+    own patient list instead."""
+    _require(request, "view_overview")
+    return hospital.overview(db, _view(request), request.state.user, _batch_dates())
+
+
+@app.get("/api/staff")
+def get_staff(request: Request):
+    """Who looks after whom: doctors and nurses with their patient counts."""
+    _require(request, "view_staff")
+    return hospital.staff(db, _view(request), request.state.user, _batch_dates())
+
+
+class CareTeamRequest(BaseModel):
+    patient_ids: List[str]
+    doctor_id: Optional[str] = None
+    nurse_ids: Optional[List[str]] = None
+    add_nurse_ids: Optional[List[str]] = None
+
+
+@app.post("/api/care-team")
+def set_care_team(payload: CareTeamRequest, request: Request):
+    """Assign a doctor and nurses to one or more patients. Takes effect at once:
+    the next request the doctor or nurse makes already includes the patient."""
+    _require(request, "assign")
+    return hospital.assign(db, request.state.user, _scope(request), payload.patient_ids,
+                           doctor_id=payload.doctor_id, nurse_ids=payload.nurse_ids,
+                           add_nurse_ids=payload.add_nurse_ids)
+
+
+_SUMMARY_FIELDS = {"_id": 0, "patient_id": 1, "risk_score": 1, "risk_band": 1,
+                   "current_score": 1, "current_band": 1, "monitoring_status": 1,
+                   "trend_delta": 1, "weeks_tracked": 1, "discharge_date": 1}
+
+
+@app.get("/api/patients/{patient_id}/summary")
+def get_patient_summary(patient_id: str, request: Request):
+    """The overview layer of one patient - risk, care team, insurer - and
+    whether the caller may open the clinical layer yet. What a hospital admin
+    sees before giving a reason, and what the page asks first for everyone."""
+    _require_patient(request, patient_id)
+    row = db["patient_worklist"].find_one(
+        {**_patient_id_filter(patient_id), "batch_date": _latest_batch()}, _SUMMARY_FIELDS)
+    if not row:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    team = hospital.care_teams(db, [patient_id])[str(patient_id)]
+    state = _detail_access(request, patient_id)
+    user = request.state.user
+    return {
+        "id": str(row.pop("patient_id")),
+        **row,
+        "current_score": row.get("current_score", row.get("risk_score")),
+        "current_band": row.get("current_band") or row.get("risk_band"),
+        **team,
+        "detail_access": state,
+        "reasons": ([{"key": k, "label": v} for k, v in access.REASONS.items()]
+                    if state == "reason_required" else []),
+        "can_assign": user["role"] in access.ACTIONS["assign"],
+    }
+
+
+class OpenPatientRequest(BaseModel):
+    reason: str
+
+
+@app.post("/api/patients/{patient_id}/open")
+def open_patient(patient_id: str, payload: OpenPatientRequest, request: Request):
+    """A hospital admin or insurer opens one patient's clinical layer, giving a
+    reason. Logged once per patient per sign-in; nobody else is ever asked."""
+    _require_patient(request, patient_id)
+    user = request.state.user
+    if not access.needs_reason(user):
+        return {"patient_id": patient_id, "detail_access": "open"}
+    if payload.reason not in access.REASONS:
+        raise HTTPException(status_code=422, detail="Choose one of the listed reasons")
+    if str(patient_id) not in _opened(request):
+        access_log.record(db, user, access_log.APP, patient_id, _patient_hospital(patient_id),
+                          payload.reason, request.state.session)
+        _opened(request).add(str(patient_id))
+    return {"patient_id": patient_id, "detail_access": "granted"}
+
+
 @app.post("/api/patients/{patient_id}/assign")
 def assign_coordinator(patient_id: str, payload: AssignCoordinatorRequest, request: Request):
     _require_patient(request, patient_id)
@@ -2261,7 +2448,7 @@ def add_care_note(patient_id: str, payload: AddNoteRequest, request: Request):
 
 @app.get("/api/patients/{patient_id}/care-actions")
 def get_care_actions(patient_id: str, request: Request):
-    _require_patient(request, patient_id)
+    _require_detail(request, patient_id)
     doc = db["care_actions"].find_one(_patient_id_filter(patient_id), {"_id": 0})
     if not doc:
         return {"patient_id": patient_id, "coordinator_name": None, "assigned_at": None, "notes": []}
@@ -2422,7 +2609,7 @@ def register_doctor(payload: RegisterDoctorRequest, request: Request):
             db, payload.name, payload.specialty, payload.email, payload.clinical_groups)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    hospital = request.state.user.get("hospital_id")
+    hospital = access.hospital_of(request.state.user)
     if hospital:
         db["doctors"].update_one({"doctor_id": doctor["doctor_id"]},
                                  {"$set": {"hospital_id": hospital}})
@@ -2470,7 +2657,7 @@ def get_patient_forecast(patient_id: str, request: Request):
     gets status "insufficient_history" and the red flags that do apply, not an
     error and not a slope invented from a single point.
     """
-    _require_patient(request, patient_id)
+    _require_detail(request, patient_id)
     result, meta, _ = _forecast_for(patient_id)
     if result.get("status") == "no_data":
         exists = db["patient_worklist"].count_documents(
@@ -2566,6 +2753,7 @@ def get_forecast_scans(request: Request):
 @app.get("/api/doctors/{doctor_id}/alerts")
 def get_doctor_alerts(doctor_id: str, request: Request, status: Optional[str] = None,
                       limit: int = 50):
+    _require(request, "read_inboxes")
     view = _view(request)
     if not doctor_service.get_doctor(view, doctor_id):
         raise HTTPException(status_code=404, detail="Doctor not found")
@@ -2584,12 +2772,13 @@ def get_doctor_notifications(doctor_id: str, request: Request):
 @app.get("/api/clinical-alerts/unrouted")
 def get_unrouted_alerts(request: Request, limit: int = 50):
     """Alerts with no registered doctor to send them to. Never silently dropped."""
+    _require(request, "read_inboxes")
     return {"alerts": doctor_service.unrouted_alerts(_view(request), limit=limit)}
 
 
 @app.get("/api/patients/{patient_id}/clinical-alerts")
 def get_patient_clinical_alerts(patient_id: str, request: Request):
-    _require_patient(request, patient_id)
+    _require_detail(request, patient_id)
     return {"patient_id": patient_id,
             "alerts": doctor_service.patient_alerts(_view(request), patient_id)}
 

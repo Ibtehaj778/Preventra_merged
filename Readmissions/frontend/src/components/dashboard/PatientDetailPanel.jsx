@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getPatientById } from '../../api';
+import { getPatientById, getPatientSummary } from '../../api';
 import RiskBadge from '../shared/RiskBadge';
+import CareTeamCard from '../shared/CareTeamCard';
+import ClinicalGate from '../shared/ClinicalGate';
 import DriverCard from '../shared/DriverCard';
 import DiagnosisList from '../shared/DiagnosisList';
 import AiInsightsPanel from '../shared/AiInsightsPanel';
@@ -37,23 +39,38 @@ function DetailSkeleton() {
 // sliding off-screen before the parent actually unmounts it.
 const CLOSE_TRANSITION_MS = 300;
 
-export default function PatientDetailPanel({ patientId, onClose }) {
+export default function PatientDetailPanel({ patientId, onClose, onChanged }) {
+  // The overview layer first - risk, care team, insurer, and whether the
+  // clinical details are open to this user yet. Hospital admins and insurers
+  // give a reason before the rest loads (api/access.py).
+  const [summary, setSummary] = useState(null);
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Drives the slide/fade transition. Starts false so the panel first paints
   // off-screen, then flips true a frame later so the transition actually runs.
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    let live = true;
     setLoading(true);
     setError(null);
     setPatient(null);
-    getPatientById(patientId)
-      .then((data) => { setPatient(data); setLoading(false); })
-      .catch((err)  => { setError(err.message); setLoading(false); });
-  }, [patientId]);
+    getPatientSummary(patientId)
+      .then((sum) => {
+        if (!live) return null;
+        setSummary(sum);
+        if (sum.detail_access === 'reason_required') return null;
+        return getPatientById(patientId).then((data) => { if (live) setPatient(data); });
+      })
+      .then(() => { if (live) setLoading(false); })
+      .catch((err) => { if (live) { setError(err.message); setLoading(false); } });
+    return () => { live = false; };
+  }, [patientId, reloadKey]);
+
+  const reload = () => setReloadKey((k) => k + 1);
 
   // Runs once on mount only — switching to a different patient while the
   // panel is already open should not replay the slide-in. A rAF-only flip can
@@ -119,6 +136,26 @@ export default function PatientDetailPanel({ patientId, onClose }) {
             </div>
           )}
 
+          {!loading && !error && summary && !patient && (
+            <div className="space-y-6 p-6 pb-24">
+              <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center text-center space-y-3">
+                <div className="text-sm font-semibold text-gray-500 uppercase tracking-widest">{summary.id}</div>
+                <div className="flex items-center space-x-6">
+                  <span className={`text-5xl font-black ${getScoreColor(summary.current_band)}`}>
+                    {parseFloat(summary.current_score).toFixed(1)}%
+                  </span>
+                  <RiskBadge riskBand={summary.current_band} size="md" />
+                </div>
+                <div className="text-sm text-gray-600 flex items-center gap-2">
+                  <Calendar size={16} className="text-gray-400" />
+                  <span>Last Discharge: <strong>{summary.discharge_date}</strong></span>
+                </div>
+              </div>
+              <CareTeamCard summary={summary} onChanged={() => { reload(); onChanged?.(); }} />
+              <ClinicalGate patientId={summary.id} reasons={summary.reasons} onOpened={reload} compact />
+            </div>
+          )}
+
           {!loading && patient && (
             <div className="space-y-6 p-6 pb-24">
               {/* Top Summary */}
@@ -142,6 +179,8 @@ export default function PatientDetailPanel({ patientId, onClose }) {
                   <span>Last Discharge: <strong>{patient.discharge_date}</strong></span>
                 </div>
               </div>
+
+              <CareTeamCard summary={summary} onChanged={() => { reload(); onChanged?.(); }} />
 
               {/* What the patient was treated for. Above the drivers on
                   purpose: a risk score and its reasons only mean something

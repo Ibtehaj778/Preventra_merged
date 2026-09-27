@@ -17,6 +17,7 @@ import BudgetSimulator from './pages/BudgetSimulator';
 import CostOfInaction from './pages/CostOfInaction';
 import Settings from './pages/Settings';
 import MyRecord from './pages/MyRecord';
+import Staff from './pages/Staff';
 import { useRole } from './context/RoleContext';
 
 function AuthenticatedApp() {
@@ -39,9 +40,10 @@ function AuthenticatedApp() {
 
 // Which pages each role can reach. The backend refuses the rest anyway; these
 // redirects stop a page from opening at all, so it never falls back to stand-in
-// data after a refusal.
+// data after a refusal. Doctors and nurses have no Overview: their Patients
+// list is their home.
 function RoleRoutes() {
-  const { isCostView, isPatient } = useRole();
+  const { isCostView, isPatient, hasOverview, hasStaff } = useRole();
 
   if (isPatient) {
     return (
@@ -56,8 +58,9 @@ function RoleRoutes() {
   return (
     <>
       <Routes>
-        <Route path="/"             element={<ExecutiveSummary />} />
+        <Route path="/"             element={hasOverview ? <ExecutiveSummary /> : <Navigate to="/patients" replace />} />
         <Route path="/patients"     element={<PatientRiskPanel />} />
+        {hasStaff && <Route path="/staff" element={<Staff />} />}
         <Route path="/patients/:id" element={<PatientDetail />} />
         <Route path="/segments"     element={<SegmentExplorer />} />
         <Route path="/survival"     element={<SurvivalAnalysis />} />

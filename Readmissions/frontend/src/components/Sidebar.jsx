@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, BarChart, UserPlus, Info, Stethoscope, Users, X } from 'lucide-react';
+import { LayoutDashboard, BarChart, UserPlus, Info, Stethoscope, Users, UsersRound, ClipboardList, X } from 'lucide-react';
 import { MANUAL_ENTRY_ENABLED } from '../api';
 import { readClaims } from '../api/auth';
+import { can, OVERVIEW_ROLES, STAFF_ROLES, CONSOLE_ROLES, MANAGER_ROLES, ROLE_LABELS } from '../roles';
 import AppSwitcher from './AppSwitcher';
 
 // Below `md` the sidebar is an off-canvas drawer; at `md` and above it is the
@@ -28,23 +29,24 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
     };
   }, [open, onClose]);
 
-  const isPatient = readClaims()?.role === 'patient';
-  // A patient sees one thing: their own record.
+  const role = readClaims()?.role;
+  const isPatient = role === 'patient';
+  // Each role's pages - hidden, not dimmed, for everyone else. The server
+  // refuses them anyway; this keeps the menu to what the user can use.
+  // Doctors and nurses have no Overview: their Patients list is their home.
   const navItems = isPatient ? [
     { name: 'My record', path: '/my-record', icon: <Info size={20} /> },
   ] : [
-    { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} /> },
+    ...(can(OVERVIEW_ROLES) ? [{ name: 'Overview', path: '/', icon: <LayoutDashboard size={20} /> }] : []),
+    { name: 'Patients', path: '/patients', icon: <ClipboardList size={20} /> },
+    ...(can(STAFF_ROLES) ? [{ name: 'Staff', path: '/staff', icon: <UsersRound size={20} /> }] : []),
     ...(MANUAL_ENTRY_ENABLED
       ? [{ name: 'Manual Entry', path: '/manual-entry', icon: <UserPlus size={20} /> }]
       : []),
     { name: 'Analytics', path: '/analytics', icon: <BarChart size={20} /> },
-    { name: 'Clinician Console', path: '/doctor', icon: <Stethoscope size={20} /> },
+    ...(can(CONSOLE_ROLES) ? [{ name: 'Clinician Console', path: '/doctor', icon: <Stethoscope size={20} /> }] : []),
     { name: 'About Preventra', path: '/about', icon: <Info size={20} /> },
-    // Only for the roles that manage accounts. The server refuses everyone
-    // else anyway; this just keeps the menu to what the user can use.
-    ...(['superadmin', 'hospital_admin'].includes(readClaims()?.role)
-      ? [{ name: 'User Management', path: '/settings', icon: <Users size={20} /> }]
-      : []),
+    ...(can(MANAGER_ROLES) ? [{ name: 'User Management', path: '/settings', icon: <Users size={20} /> }] : []),
   ];
 
   return (
@@ -110,7 +112,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         <AppSwitcher onNavigate={onClose} />
 
         <div className="border-t border-gray-700 p-4">
-          <div className="text-sm font-medium text-white">Care team</div>
+          <div className="text-sm font-medium text-white">{ROLE_LABELS[role] || 'Care team'}</div>
         </div>
       </div>
     </>

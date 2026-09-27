@@ -1,7 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
+import Overview from './pages/Overview';
+import Patients from './pages/Patients';
+import Staff from './pages/Staff';
 import PatientDetail from './pages/PatientDetail';
 import PatientTrend from './pages/PatientTrend';
 import UpdatePatient from './pages/UpdatePatient';
@@ -14,6 +16,7 @@ import TestComponents from './pages/TestComponents';
 import MyRecord from './pages/MyRecord';
 import { MANUAL_ENTRY_ENABLED } from './api';
 import { readClaims } from './api/auth';
+import { can, OVERVIEW_ROLES, STAFF_ROLES, CONSOLE_ROLES } from './roles';
 
 /**
  * The care-team dashboard.
@@ -23,6 +26,10 @@ import { readClaims } from './api/auth';
  * managers, their assigned patients for doctors and nurses, members for an
  * insurer. A patient gets a single page - their own record. The routes below
  * only decide which pages open; the backend decides what data they get.
+ *
+ * The hospital pages (see api/hospital.py): Overview for the roles that run
+ * or pay for a hospital's care, Patients for everyone, Staff for the roles
+ * that assign. Doctors and nurses start on their Patients list.
  */
 function App() {
   if (readClaims()?.role === 'patient') {
@@ -44,12 +51,14 @@ function App() {
     <Router>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={can(OVERVIEW_ROLES) ? <Overview /> : <Navigate to="/patients" replace />} />
+          <Route path="/patients" element={<Patients />} />
+          {can(STAFF_ROLES) && <Route path="/staff" element={<Staff />} />}
           <Route path="/patients/:id" element={<PatientDetail />} />
           <Route path="/patients/:id/trend" element={<PatientTrend />} />
           <Route path="/patients/:id/update" element={<UpdatePatient />} />
           <Route path="/analytics" element={<Analytics />} />
-          <Route path="/doctor" element={<DoctorConsole />} />
+          {can(CONSOLE_ROLES) && <Route path="/doctor" element={<DoctorConsole />} />}
           {/* Off by default. The backend refuses the create endpoints too, so
               typing the URL gets you a form that cannot save. */}
           {MANUAL_ENTRY_ENABLED && <Route path="/manual-entry" element={<ManualEntry />} />}

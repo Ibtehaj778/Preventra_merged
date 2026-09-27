@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getPatientById, getSummaryHistory } from '../api';
+import { getPatientById, getPatientSummary } from '../api';
+import { myRole } from '../roles';
 import RiskBadge from '../components/shared/RiskBadge';
+import CareTeamCard from '../components/shared/CareTeamCard';
+import ClinicalGate from '../components/shared/ClinicalGate';
 import DriverCard from '../components/shared/DriverCard';
 import AiInsightsPanel from '../components/shared/AiInsightsPanel';
 import CareCoordination from '../components/dashboard/CareCoordination';
@@ -39,30 +42,58 @@ function PageSkeleton() {
 export default function PatientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  
+  const isPatient = myRole() === 'patient';
+
+  // The overview layer first; the clinical record only once it is open to this
+  // user - at once for the care team, after a reason for hospital admins and
+  // insurers (api/access.py).
+  const [summary, setSummary] = useState(null);
   const [patient, setPatient] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let live = true;
     setLoading(true);
     setError(null);
-    getPatientById(id)
-      .then((patientData) => {
-        setPatient(patientData);
-        let patientHistory = patientData.history || [];
-        if (patientHistory.length === 1) {
-          patientHistory = [
-            { week: "Previous", score: patientHistory[0].score },
-            patientHistory[0]
-          ];
-        }
-        setHistory(patientHistory);
-        setLoading(false);
+    setPatient(null);
+    getPatientSummary(id)
+      .then((sum) => {
+        if (!live) return null;
+        setSummary(sum);
+        if (sum.detail_access === 'reason_required') return null;
+        return getPatientById(id).then((patientData) => {
+          if (!live) return;
+          setPatient(patientData);
+          let patientHistory = patientData.history || [];
+          if (patientHistory.length === 1) {
+            patientHistory = [
+              { week: "Previous", score: patientHistory[0].score },
+              patientHistory[0]
+            ];
+          }
+          setHistory(patientHistory);
+        });
       })
-      .catch((err) => { setError(err.message); setLoading(false); });
-  }, [id]);
+      .then(() => { if (live) setLoading(false); })
+      .catch((err) => { if (live) { setError(err.message); setLoading(false); } });
+    return () => { live = false; };
+  }, [id, reloadKey]);
+
+  const reload = () => setReloadKey((k) => k + 1);
+  const back = (
+    !isPatient && (
+      <button
+        onClick={() => navigate('/patients')}
+        className="flex items-center space-x-2 text-gray-500 hover:text-ns-navy transition-colors font-medium mb-2 focus:outline-none"
+      >
+        <ArrowLeft size={18} />
+        <span>Back to patients</span>
+      </button>
+    )
+  );
 
   const getScoreColor = (band) => {
     const normalized = band?.toLowerCase();
@@ -92,17 +123,44 @@ export default function PatientDetail() {
 
   if (error) {
     return (
-      <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-        <button onClick={() => navigate('/')} className="flex items-center space-x-2 text-gray-500 hover:text-ns-navy mb-6 font-medium">
-          <ArrowLeft size={18} /><span>Back to Worklist</span>
-        </button>
+      <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-4">
+        {back}
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start space-x-3 text-red-800">
           <AlertCircle size={20} className="mt-0.5 shrink-0" />
           <div>
-            <div className="font-semibold">Please Select a valid patient from the dashbaoard</div>
+            <div className="font-semibold">This patient record is not available to you</div>
             <div className="text-sm mt-0.5 text-red-600">{error}</div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // Overview layer only, until a hospital admin or insurer gives a reason.
+  if (!patient) {
+    return (
+      <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+        {back}
+        <div className="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="space-y-2 text-center md:text-left">
+            <h1 className="text-3xl font-bold text-gray-900">{summary.id}</h1>
+            <div className="flex items-center space-x-2 text-gray-500">
+              <Calendar size={18} />
+              <span>Discharged: <strong>{summary.discharge_date}</strong></span>
+            </div>
+          </div>
+          <div className="flex items-center gap-6 bg-gray-50 px-8 py-4 rounded-xl border border-gray-100">
+            <div className="flex flex-col items-center md:items-end">
+              <span className="text-sm font-medium text-gray-500 mb-1">Current Risk Score</span>
+              <span className={`text-5xl font-black ${getScoreColor(summary.current_band)} leading-none`}>
+                {parseFloat(summary.current_score).toFixed(1)}%
+              </span>
+            </div>
+            <RiskBadge riskBand={summary.current_band} />
+          </div>
+        </div>
+        <CareTeamCard summary={summary} onChanged={reload} />
+        <ClinicalGate patientId={summary.id} reasons={summary.reasons} onOpened={reload} />
       </div>
     );
   }
@@ -119,14 +177,7 @@ export default function PatientDetail() {
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
       
-      {/* Back Button */}
-      <button 
-        onClick={() => navigate('/')}
-        className="flex items-center space-x-2 text-gray-500 hover:text-ns-navy transition-colors font-medium mb-2 focus:outline-none"
-      >
-        <ArrowLeft size={18} />
-        <span>Back to Worklist</span>
-      </button>
+      {back}
 
       {/* Header Profile */}
       <div className="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
@@ -254,6 +305,8 @@ export default function PatientDetail() {
               ))}
             </ul>
           </div>
+
+          <CareTeamCard summary={summary} onChanged={reload} />
 
           <ForecastPanel patientId={patient.id} />
 

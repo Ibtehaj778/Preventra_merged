@@ -61,7 +61,9 @@ async def get_downstream_cost(scope: Optional[list] = Depends(scope_of)) -> Down
     db = get_db()
     # The caller's patients only: an insurer's view adds up its own members.
     docs = await db.progression_cost.find(scope_query(scope), {"_id": 0}).to_list(length=None)
-    if not docs:
+    # No rows because the caller has no patients (a new hospital, an insurer
+    # with no members yet) is an answer of zero, not a missing collection.
+    if not docs and scope != []:
         raise HTTPException(
             status_code=503,
             detail="progression_cost collection is empty. Run scripts/migrate_csv_to_mongo.py.",
@@ -150,7 +152,7 @@ async def get_rebound_risk(scope: Optional[list] = Depends(scope_of)) -> Rebound
     """
     db = get_db()
     patient_docs = await db.rebound_risk.find(scope_query(scope), {"_id": 0}).to_list(length=None)
-    if not patient_docs:
+    if not patient_docs and scope != []:            # as in get_downstream_cost
         raise HTTPException(
             status_code=503,
             detail="rebound_risk collection is empty. Run scripts/migrate_csv_to_mongo.py.",

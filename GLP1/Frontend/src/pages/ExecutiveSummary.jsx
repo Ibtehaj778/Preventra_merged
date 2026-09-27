@@ -5,6 +5,8 @@ import { SEGMENT_COLORS } from '../data/mockData';
 import { useRole } from '../context/RoleContext';
 import { Link } from 'react-router-dom';
 import { useSummary } from '../hooks/useSummary';
+import HospitalStrip from '../components/hospital/HospitalStrip';
+import PageState from '../components/shared/PageState';
 
 const fmt = (n) => n >= 1e6 ? `$${(n/1e6).toFixed(1)}M` : n >= 1e3 ? `$${(n/1e3).toFixed(1)}K` : `$${n.toLocaleString()}`;
 
@@ -16,7 +18,7 @@ function getAdherenceBarColor(pct) {
 }
 
 /* ── Segment Card Component ────────────────────────────────────────── */
-function SegmentCard({ seg, delay }) {
+function SegmentCard({ seg, delay, showCost }) {
   const barColor = getAdherenceBarColor(seg.adherencePct);
   return (
     <div
@@ -71,10 +73,12 @@ function SegmentCard({ seg, delay }) {
           <span className="text-xs text-gray-400">Dropouts</span>
           <span className="text-sm font-semibold text-gray-700 font-mono">{seg.dropouts.toLocaleString()}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-400">$ at risk</span>
-          <span className="text-sm font-semibold text-gray-700 font-mono">{fmt(seg.atRisk)}</span>
-        </div>
+        {showCost && (
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-400">$ at risk</span>
+            <span className="text-sm font-semibold text-gray-700 font-mono">{fmt(seg.atRisk)}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -130,9 +134,21 @@ function PopulationBar({ totalN, segmentCards }) {
 }
 
 /* ── Main Page ─────────────────────────────────────────────────────── */
+// The Overview: "how is my hospital doing?" For hospital admins, case managers,
+// insurers and the superadmin - doctors and nurses start on their patient list.
+// Cost figures only for the roles that own the budget.
 export default function ExecutiveSummary() {
   const { isCostView } = useRole();
-  const { data: summaryData } = useSummary();
+  const { data: summaryData, error: summaryError } = useSummary();
+
+  if (!summaryData) {
+    return (
+      <div className="exec-summary-page">
+        <HospitalStrip />
+        <PageState error={summaryError} label="the summary" />
+      </div>
+    );
+  }
 
   const summaryKPIs        = summaryData.kpis;
   const adherenceBySegment = summaryData.adherence_by_segment;
@@ -142,7 +158,7 @@ export default function ExecutiveSummary() {
   const totalN = adherenceBySegment.reduce((s, seg) => s + seg.n, 0);
   const segmentCards = adherenceBySegment.map(seg => {
     const dropouts    = Math.round((1 - seg.adherence) * seg.n);
-    const atRisk      = Math.round(dropouts * (summaryKPIs.avgAnnualCost ?? summaryKPIs.avg_annual_cost ?? 10603));
+    const atRisk      = Math.round(dropouts * summaryKPIs.avgAnnualCost);
     const shareOfTotal = seg.n / (totalN || 1);
     const adherencePct = Math.round(seg.adherence * 100);
     const isHealthy    = adherencePct >= 70;
@@ -151,6 +167,8 @@ export default function ExecutiveSummary() {
 
   return (
     <div className="exec-summary-page">
+      <HospitalStrip />
+
       {isCostView && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium animate-fade-up"
           style={{ background: '#EBF4FF', color: '#1B4F8A', border: '1px solid #BFDBFE' }}>
@@ -186,10 +204,11 @@ export default function ExecutiveSummary() {
           sub="vs 47% published benchmark" trend={0} trendLabel="Aligned with benchmark" color="#2E7D32" delay={0.05} />
         <KPICard label="Population Dropout" value={`${((summaryKPIs.dropoutRate ?? summaryKPIs.dropout_rate ?? 0)*100).toFixed(0)}%`} icon={TrendingDown}
           sub="Patients discontinuing therapy" trend={-1} trendLabel="Above ideal" color="#C62828" delay={0.10} />
-        <KPICard label="Avg Annual Drug Cost" value={`$${(summaryKPIs.avgAnnualCost ?? summaryKPIs.avg_annual_cost ?? 0).toLocaleString()}`} icon={DollarSign}
-          sub="Per patient per year" color="#EF6C00" delay={0.15} />
-        <KPICard label="Est. Wasted Spend" value={fmt(summaryKPIs.wastedSpendAnnual ?? summaryKPIs.wasted_spend_annual ?? 0)} icon={BarChart2}
-          sub="Paid for patients who dropout" trend={-1} trendLabel="Opportunity for reduction" color="#C62828" delay={0.20} />
+        {/* Cost figures are for the roles with the cost screens. */}
+        {isCostView && <KPICard label="Avg Annual Drug Cost" value={`$${(summaryKPIs.avgAnnualCost ?? 0).toLocaleString()}`} icon={DollarSign}
+          sub="Per patient per year" color="#EF6C00" delay={0.15} />}
+        {isCostView && <KPICard label="Est. Wasted Spend" value={fmt(summaryKPIs.wastedSpendAnnual ?? 0)} icon={BarChart2}
+          sub="Paid for patients who dropout" trend={-1} trendLabel="Opportunity for reduction" color="#C62828" delay={0.20} />}
       </div>
 
       {/* ── Zone B — Who's Dropping Out (Unified Section) ────────────── */}
@@ -217,7 +236,7 @@ export default function ExecutiveSummary() {
         {/* Segment Cards Grid */}
         <div className="exec-segment-grid">
           {segmentCards.map((seg, i) => (
-            <SegmentCard key={i} seg={seg} delay={0.15 + i * 0.05} />
+            <SegmentCard key={i} seg={seg} delay={0.15 + i * 0.05} showCost={isCostView} />
           ))}
         </div>
       </div>
@@ -227,7 +246,7 @@ export default function ExecutiveSummary() {
         {/* Zone C left — role-based */}
         <div className="card p-5 animate-fade-up stagger-5">
           {isCostView ? (() => {
-            const avgCost = summaryKPIs.avgAnnualCost ?? summaryKPIs.avg_annual_cost ?? 10603;
+            const avgCost = summaryKPIs.avgAnnualCost;
             const ranked = adherenceBySegment
               .map(s => ({
                 name:      s.segment.split(' ').slice(0, 2).join(' '),
@@ -237,6 +256,10 @@ export default function ExecutiveSummary() {
                 adherence: s.adherence,
               }))
               .sort((a, b) => a.value - b.value);
+            // A hospital with no patients yet has no segments to rank.
+            if (!ranked.length) {
+              return <SectionHeader title="Cost per Adherent Patient-Year" sub="No patients yet" />;
+            }
             const best  = ranked[0].value;
             const worst = ranked[ranked.length - 1].value;
             return (
@@ -325,7 +348,7 @@ export default function ExecutiveSummary() {
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={adherenceBySegment.map(s => ({
                   name: s.segment.split(' ').slice(0,2).join(' '),
-                  spend: Math.round((1-s.adherence) * s.n * 10603),
+                  spend: Math.round((1-s.adherence) * s.n * summaryKPIs.avgAnnualCost),
                 }))} layout="vertical" margin={{ left: 0, right: 24, top: 4, bottom: 0 }}>
                   <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="#EDF2F7" />
                   <XAxis type="number" tickFormatter={v => `$${(v/1e6).toFixed(1)}M`} tick={{ fontSize: 10, fill: '#718096' }} axisLine={{ stroke: '#E2E8F0' }} tickLine={false} />

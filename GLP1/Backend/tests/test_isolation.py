@@ -142,7 +142,11 @@ def test_single_patient_routes_hide_everyone_else(world, email):
         for path in (f"/api/patients/{idx}", f"/api/patients/{idx}/pharmacy-view"):
             assert c.get(path).status_code == 404, path
     for idx in allowed(email):
-        assert c.get(f"/api/patients/{idx}").status_code == 200
+        # Hospital admins and insurers open the clinical layer with a reason
+        # (tests/test_hospital_pages.py); for them the record is there, but
+        # behind the prompt.
+        expected = 403 if ACCOUNTS[email][0] in ("hospital_admin", "insurer") else 200
+        assert c.get(f"/api/patients/{idx}").status_code == expected
 
 
 def test_the_summary_counts_only_the_accounts_patients(world):

@@ -3,14 +3,18 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
 import {
-  LayoutDashboard, Users, UserCircle, PieChart, TrendingDown,
-  DollarSign, Calculator, Settings, ChevronLeft, ChevronRight,
+  LayoutDashboard, Users, UserCircle, PieChart, TrendingDown, UsersRound,
+  Calculator, Settings, ChevronLeft, ChevronRight,
   Activity, Building2, Stethoscope, AlertTriangle, LogOut, Menu, X, ExternalLink,
 } from 'lucide-react';
+import HospitalPicker from '../hospital/HospitalPicker';
 
+// `only` names the RoleContext flag a page needs; pages for other roles are
+// hidden, not dimmed (the backend refuses them anyway).
 const NAV_ITEMS = [
-  { to: '/',         icon: LayoutDashboard, label: 'Executive Summary',    primary: null },
-  { to: '/patients', icon: Users,           label: 'Patient Risk Panel',   primary: 'care_team' },
+  { to: '/',         icon: LayoutDashboard, label: 'Overview',             primary: null, only: 'hasOverview' },
+  { to: '/patients', icon: Users,           label: 'Patients',             primary: null },
+  { to: '/staff',    icon: UsersRound,      label: 'Staff',                primary: null, only: 'hasStaff' },
   { to: '/segments', icon: PieChart,        label: 'Segment Explorer',     primary: null },
   { to: '/survival', icon: TrendingDown,    label: 'Survival Analysis',    primary: null },
   // { to: '/cost',     icon: DollarSign,      label: 'Cost-Effectiveness',   primary: 'cost' },
@@ -18,6 +22,8 @@ const NAV_ITEMS = [
   { to: '/consequence', icon: AlertTriangle,  label: 'Cost of Inaction',     primary: 'cost' },
   // { to: '/settings', icon: Settings,        label: 'Settings & Data Info', primary: null },
 ];
+
+const PAGE_TITLES = { '/settings': 'Settings', '/my-record': 'My record' };
 
 // `primary` marks who a page is mainly for: 'cost' pages for the roles that own
 // the budget, 'care_team' pages for the people looking after patients. Pages
@@ -52,11 +58,15 @@ function NavItem({ item, collapsed, isCostView, extra = {} }) {
 export default function AppShell({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { roleLabel, isCostView, isPatient } = useRole();
+  const roleFlags = useRole();
+  const { roleLabel, isCostView, isPatient } = roleFlags;
   const { logout, user, token } = useAuth();
   const location = useLocation();
+  const allowed = (item) => !item.only || roleFlags[item.only];
 
-  const pageTitle = NAV_ITEMS.find(n => n.to === location.pathname)?.label ?? 'GLP-1 Platform';
+  const pageTitle = NAV_ITEMS.find(n => n.to === location.pathname)?.label
+    ?? PAGE_TITLES[location.pathname]
+    ?? (location.pathname.startsWith('/patients/') ? 'Patient detail' : 'GLP-1 Platform');
 
   // The mobile drawer always shows the full-width sidebar, even if the user
   // collapsed it on desktop before shrinking the window.
@@ -138,14 +148,14 @@ export default function AppShell({ children }) {
           ) : (<>
           {/* Section: Overview */}
           {!isCollapsed && <div className="text-[10px] text-white/25 uppercase tracking-widest px-3 pt-3 pb-1">Overview</div>}
-          {NAV_ITEMS.slice(0, 2).map(item => (
+          {NAV_ITEMS.slice(0, 3).filter(allowed).map(item => (
             <NavItem key={item.to} item={item} collapsed={isCollapsed} isCostView={isCostView}
               extra={item.to === '/' ? { end: true } : {}} />
           ))}
 
           {/* Section: Analytics */}
           {!isCollapsed && <div className="text-[10px] text-white/25 uppercase tracking-widest px-3 pt-4 pb-1">Analytics</div>}
-          {NAV_ITEMS.slice(2, 4).map(item => (
+          {NAV_ITEMS.slice(3, 5).map(item => (
             <NavItem key={item.to} item={item} collapsed={isCollapsed} isCostView={isCostView} />
           ))}
 
@@ -157,7 +167,7 @@ export default function AppShell({ children }) {
               <div className="text-[9px] bg-blue-500/30 text-blue-300 px-1.5 py-0.5 rounded-full">Primary</div>
             </div>
           )}
-          {isCostView && NAV_ITEMS.slice(4, 6).map(item => (
+          {isCostView && NAV_ITEMS.slice(5, 7).map(item => (
             <NavItem key={item.to} item={item} collapsed={isCollapsed} isCostView={isCostView} />
           ))}
 
@@ -234,6 +244,7 @@ export default function AppShell({ children }) {
             </div>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
+            <HospitalPicker />
             {/* Role indicator pill */}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
                  style={{ background: isCostView ? '#E3F2FD' : '#E8F5E9', color: isCostView ? '#1B4F8A' : '#2E7D32' }}>

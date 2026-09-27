@@ -20,6 +20,8 @@ const ASSIGNABLE = {
 const HOSPITAL_ROLES = ['hospital_admin', 'doctor', 'nurse', 'case_manager', 'patient'];
 
 const input = 'w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 focus:border-blue-500 focus:outline-none';
+// The same control, sized to its content rather than its column.
+const inputInline = input.replace('w-full ', '');
 const button = 'rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50';
 const ghost = 'rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50';
 const panel = 'rounded-xl border border-gray-200 bg-white p-5';
@@ -157,7 +159,88 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
           </table>
         </div>
       </div>
+
+      <AccessLog request={request} isSuper={isSuper} hospitals={hospitals} hospitalName={hospitalName} />
     </div>
+  );
+}
+
+const APP_LABELS = { readmissions: 'Readmissions', glp1: 'GLP-1' };
+
+// Who opened which patient's clinical details, and why - in both apps. A
+// hospital admin sees its own hospital's patients (including views by our team
+// and by insurers); the superadmin sees every hospital. Read-only: the server
+// writes an entry each time someone opens a patient (api/access_log.py).
+function AccessLog({ request, isSuper, hospitals, hospitalName }) {
+  const [entries, setEntries] = useState(null);
+  const [error, setError] = useState(null);
+  const [app, setApp] = useState('');
+  const [hospitalId, setHospitalId] = useState('');
+
+  useEffect(() => {
+    let current = true;
+    const qs = new URLSearchParams(Object.entries({ app, hospital_id: hospitalId }).filter(([, v]) => v));
+    request(`/auth/admin/access-log${qs.toString() ? `?${qs}` : ''}`)
+      .then((rows) => { if (current) { setEntries(rows); setError(null); } })
+      .catch((e) => { if (current) setError(e.message); });
+    return () => { current = false; };
+  }, [request, app, hospitalId]);
+
+  return (
+    <details className={panel}>
+      <summary className="cursor-pointer font-semibold text-gray-800">
+        Access log{entries ? ` (${entries.length}${entries.length >= 200 ? '+' : ''})` : ''}
+      </summary>
+      <p className="mt-2 text-xs text-gray-500">
+        Every time a hospital admin, an insurer or our team opens a patient&apos;s clinical
+        details, with the reason they gave. Doctors, nurses and case managers see their own
+        patients&apos; details without being asked, so they do not appear here.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <select className={inputInline} value={app} onChange={(e) => setApp(e.target.value)}>
+          <option value="">Both apps</option>
+          <option value="readmissions">Readmissions</option>
+          <option value="glp1">GLP-1</option>
+        </select>
+        {isSuper && (
+          <select className={inputInline} value={hospitalId} onChange={(e) => setHospitalId(e.target.value)}>
+            <option value="">All hospitals</option>
+            {hospitals.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+        )}
+      </div>
+      {error && <div className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-gray-200 text-xs uppercase text-gray-500">
+            <tr><th className="py-2 pr-3">When</th><th className="py-2 pr-3">Who</th>
+                <th className="py-2 pr-3">App</th><th className="py-2 pr-3">Patient</th>
+                {isSuper && <th className="py-2 pr-3">Hospital</th>}
+                <th className="py-2">Reason</th></tr>
+          </thead>
+          <tbody>
+            {(entries || []).map((e, i) => (
+              <tr key={`${e.at}-${e.user_id}-${e.patient_id}-${i}`} className="border-b border-gray-100">
+                <td className="py-2 pr-3 whitespace-nowrap text-xs text-gray-500">
+                  {e.at ? new Date(e.at).toLocaleString() : '—'}
+                </td>
+                <td className="py-2 pr-3">
+                  <div className="text-gray-800">{e.email}</div>
+                  <div className="text-xs text-gray-500">{ROLE_LABELS[e.role] || e.role}</div>
+                </td>
+                <td className="py-2 pr-3 text-gray-700">{APP_LABELS[e.app] || e.app}</td>
+                <td className="py-2 pr-3 font-mono text-xs text-gray-700">{e.patient_id}</td>
+                {isSuper && <td className="py-2 pr-3 text-gray-700">{hospitalName(e.hospital_id)}</td>}
+                <td className="py-2 text-gray-700">{e.reason_label}</td>
+              </tr>
+            ))}
+            {entries && !entries.length && (
+              <tr><td colSpan={isSuper ? 6 : 5} className="py-6 text-center text-gray-400">Nobody has opened a patient&apos;s details yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }
 

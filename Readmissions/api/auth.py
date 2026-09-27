@@ -18,7 +18,12 @@ Token claims, frozen by agreement between both products:
 
     {"sub": "<users._id as a string>", "email": ..., "role": ..., "status": ...,
      "hospital_id": ..., "must_change_password": <bool>,
-     "app_access": ["glp1", "readmissions"], "exp": <unix>}
+     "app_access": ["glp1", "readmissions"], "sid": <sign-in id>, "exp": <unix>}
+
+`sid` is random per sign-in and kept when the token is refreshed, so it names
+one sign-in session - the access log's "not asked again until you sign in
+again" is keyed on it. Tokens issued before it existed have none; see
+api/access_log.session_of for the fallback.
 
 The claims are for display only. Both backends re-read the account on every
 request (see `authenticate`), so an approval, a role change or a removal takes
@@ -28,6 +33,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import time
 from datetime import datetime
 from typing import Optional
@@ -192,11 +198,12 @@ def effective(account: dict) -> dict:
 
 
 # ----------------------------------------------------------------- token issue
-def issue_token(user: dict, exp: Optional[int] = None) -> dict:
+def issue_token(user: dict, exp: Optional[int] = None, sid: Optional[str] = None) -> dict:
     """Sign a token for an account and return it with the claims it carries.
 
-    `exp` keeps an existing expiry when re-issuing, so refreshing the claims
-    never stretches a session past its original length."""
+    `exp` and `sid` keep an existing expiry and sign-in id when re-issuing, so
+    refreshing the claims never stretches a session past its original length
+    and never starts a new one."""
     _require_secret()
     user = effective(user)
     expires_at = exp if exp is not None else int(time.time()) + TOKEN_TTL_SECONDS
@@ -208,6 +215,7 @@ def issue_token(user: dict, exp: Optional[int] = None) -> dict:
         "hospital_id": user["hospital_id"],
         "must_change_password": bool(user.get("must_change_password")),
         "app_access": user["app_access"],
+        "sid": sid or secrets.token_hex(16),
         "exp": expires_at,
     }
     return {"token": jwt.encode(claims, SHARED_SECRET_KEY, algorithm=ALGORITHM),
@@ -356,7 +364,7 @@ def refresh(db, token: str) -> dict:
     kept, so this cannot be used to stay signed in indefinitely."""
     claims = decode_token(token)
     account = authenticate(db, token, allow_pending=True, allow_password_change=True)
-    return issue_token(account, exp=claims["exp"])
+    return issue_token(account, exp=claims["exp"], sid=claims.get("sid"))
 
 
 def public_view(account: dict) -> dict:

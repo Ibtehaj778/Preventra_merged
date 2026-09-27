@@ -10,11 +10,13 @@ import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Depends
+from pydantic import BaseModel
 
 import core.model as model
+from core import access_log, hospital
 from core.mongo import get_db
-from core.security import current_user
-from core.access import require_patient, scope_of, scope_query
+from core.access import (REASONS, ASSIGN_ROLES, actor, detail_access, needs_reason, patient_hospital,
+                         redact, require_detail, require_patient, scope_of, scope_query)
 from schemas.patient_views import PatientPharmacyView
 
 router = APIRouter()
@@ -95,14 +97,32 @@ async def get_patients(
     sort_by:        str             = Query("dropout_prob"),
     sort_dir:       str             = Query("desc"),
     search:         Optional[str]   = Query(None),
-    user:           dict            = Depends(current_user),
+    doctor:         Optional[str]   = Query(None, description="doctor account id"),
+    nurse:          Optional[str]   = Query(None, description="nurse account id"),
+    unassigned:     Optional[str]   = Query(None, description="doctor | nurse"),
+    user:           dict            = Depends(actor),
     scope:          Optional[list]  = Depends(scope_of),
 ):
     db = get_db()
+    # A hospital admin or insurer sees the overview layer (core/access.py).
+    # Filtering or sorting on the clinical fields would hand the clinical layer
+    # back one row at a time, so for them those are ignored; search matches
+    # the patient number only.
+    redacted = needs_reason(user)
+    if redacted:
+        segment = molecule = None
+        financial_only = False
+        if search and not search.strip().isdigit():
+            search = None
+        if sort_by not in ("dropout_prob", "patient_idx"):
+            sort_by = "dropout_prob"
     # Only the caller's patients: a top-level condition, so the counts below
     # (which extend `match`) are limited the same way as the page.
     match = {**_build_match(segment, molecule, min_risk, prediction, financial_only, search),
              **scope_query(scope)}
+    care = await hospital.care_filter(scope, doctor=doctor, nurse=nurse, unassigned=unassigned)
+    if care is not None:
+        match["$and"] = match.get("$and", []) + [{"patient_idx": {"$in": care}}]
     direction = -1 if sort_dir.lower() == "desc" else 1
 
     high_risk_filter = {**match, "dropout_prob": {"$gte": _HIGH_RISK_THRESHOLD}}
@@ -123,25 +143,78 @@ async def get_patients(
                    .to_list(length=page_size),
     )
 
+    rows = [_shape_patient(d) for d in page_docs]
+    # Who looks after each patient, and who pays - the overview layer, on
+    # every row for every role. Pharmacy is clinical and goes with the rest.
+    teams = await hospital.care_teams([r["patient_idx"] for r in rows])
+    for r in rows:
+        r.update(teams.get(r["patient_idx"], {}))
+    if redacted:
+        rows = [redact(r) for r in rows]
     return {
         "total":     total,
         "page":      page,
         "page_size": page_size,
-        "patients":  [_shape_patient(d) for d in page_docs],
+        "patients":  rows,
         "summary":   {"high_risk_count": high_risk, "financial_barrier_count": financial_cnt},
+        "redacted":  redacted,
     }
 
 
-@router.get("/patients/{patient_idx}")
-async def get_patient(patient_idx: int, user: dict = Depends(current_user),
-                      scope: Optional[list] = Depends(scope_of)):
+@router.get("/patients/{patient_idx}/summary")
+async def get_patient_summary(patient_idx: int, user: dict = Depends(actor),
+                              scope: Optional[list] = Depends(scope_of)):
+    """The overview layer of one patient, and whether the caller may open the
+    clinical layer yet. What a hospital admin sees before giving a reason."""
     require_patient(scope, patient_idx)
+    doc = await get_db().patients.find_one({"patient_idx": patient_idx},
+                                           {"_id": 0, "patient_idx": 1, "dropout_prob": 1,
+                                            "dropout_proba": 1, "prediction": 1})
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_idx} not found")
+    team = (await hospital.care_teams([patient_idx]))[patient_idx]
+    state = await detail_access(user, patient_idx)
+    return redact({
+        "patient_idx": patient_idx,
+        "dropout_prob": round(float(doc.get("dropout_prob") or doc.get("dropout_proba") or 0.5), 4),
+        "prediction": str(doc.get("prediction") or "Unknown"),
+        **team,
+        "detail_access": state,
+        "reasons": ([{"key": k, "label": v} for k, v in REASONS.items()]
+                    if state == "reason_required" else []),
+        "can_assign": user["role"] in ASSIGN_ROLES,
+    })
+
+
+class OpenPatientRequest(BaseModel):
+    reason: str
+
+
+@router.post("/patients/{patient_idx}/open")
+async def open_patient(patient_idx: int, req: OpenPatientRequest, user: dict = Depends(actor),
+                       scope: Optional[list] = Depends(scope_of)):
+    """A hospital admin or insurer opens one patient's clinical layer, giving a
+    reason; logged once per patient per sign-in. Nobody else is asked."""
+    require_patient(scope, patient_idx)
+    if not needs_reason(user):
+        return {"patient_idx": patient_idx, "detail_access": "open"}
+    if req.reason not in REASONS:
+        raise HTTPException(status_code=422, detail="Choose one of the listed reasons")
+    if not await access_log.has_opened(user, patient_idx):
+        await access_log.record(user, patient_idx, await patient_hospital(patient_idx), req.reason)
+    return {"patient_idx": patient_idx, "detail_access": "granted"}
+
+
+@router.get("/patients/{patient_idx}")
+async def get_patient(patient_idx: int, user: dict = Depends(actor),
+                      scope: Optional[list] = Depends(scope_of)):
+    await require_detail(user, scope, patient_idx)
     db = get_db()
     doc = await db.patients.find_one({"patient_idx": patient_idx}, {"_id": 0})
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Patient {patient_idx} not found")
 
-    patient = _shape_patient(doc)
+    patient = {**_shape_patient(doc), **(await hospital.care_teams([patient_idx]))[patient_idx]}
 
     shap_drivers = None
     if doc.get("driver_1") is not None:
@@ -172,9 +245,9 @@ async def get_patient(patient_idx: int, user: dict = Depends(current_user),
     }
     
 @router.get("/patients/{patient_idx}/pharmacy-view", response_model=PatientPharmacyView)
-async def get_patient_pharmacy_view(patient_idx: int, user: dict = Depends(current_user),
+async def get_patient_pharmacy_view(patient_idx: int, user: dict = Depends(actor),
                                     scope: Optional[list] = Depends(scope_of)):
-    require_patient(scope, patient_idx)
+    await require_detail(user, scope, patient_idx)
     db = get_db()
     doc = await db.patients.find_one({"patient_idx": patient_idx}, {"_id": 0})
     if doc is None:

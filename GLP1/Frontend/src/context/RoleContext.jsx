@@ -17,6 +17,14 @@ const ROLE_LABELS = {
 // Roles whose main view is cost and ROI rather than individual patients.
 const COST_VIEW_ROLES = ['superadmin', 'hospital_admin', 'insurer'];
 
+// The hospital pages, mirroring Backend/core/access.py. Doctors and nurses have
+// no Overview or Staff page: their Patients list is their home.
+const OVERVIEW_ROLES = ['superadmin', 'hospital_admin', 'case_manager', 'insurer'];
+const STAFF_ROLES    = ['superadmin', 'hospital_admin', 'case_manager'];
+const ASSIGN_ROLES   = ['superadmin', 'hospital_admin', 'case_manager'];
+// Hospital admins and insurers open a patient's clinical details with a reason.
+const REASON_ROLES   = ['hospital_admin', 'insurer'];
+
 // The role is the one an administrator assigned to the account - read from the
 // signed-in user, never chosen here. Hiding a panel is a courtesy; the backend
 // decides what each role can actually fetch.
@@ -30,6 +38,12 @@ export function RoleProvider({ children }) {
       isCostView: COST_VIEW_ROLES.includes(role),
       // Patients get one page - their own record - and nothing else.
       isPatient:  role === 'patient',
+      isSuperadmin: role === 'superadmin',
+      hasOverview:  OVERVIEW_ROLES.includes(role),
+      hasStaff:     STAFF_ROLES.includes(role),
+      canAssign:    ASSIGN_ROLES.includes(role),
+      needsReason:  REASON_ROLES.includes(role),
+      isManager:    role === 'superadmin' || role === 'hospital_admin',
     }}>
       {children}
     </RoleContext.Provider>

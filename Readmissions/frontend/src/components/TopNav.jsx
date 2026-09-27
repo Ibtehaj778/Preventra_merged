@@ -2,13 +2,18 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import AlertsBell from './AlertsBell';
+import HospitalPicker from './HospitalPicker';
 
 export default function TopNav({ onMenuClick = () => {} }) {
   const location = useLocation();
 
   const getPageTitle = (path) => {
-    if (path === '/') return 'Dashboard';
+    if (path === '/') return 'Overview';
+    if (path === '/patients') return 'Patients';
     if (path.startsWith('/patients/')) return 'Patient Detail';
+    if (path === '/staff') return 'Staff';
+    if (path === '/settings') return 'User Management';
+    if (path === '/my-record') return 'My record';
     if (path === '/analytics') return 'Analytics';
     if (path === '/doctor') return 'Clinician Console';
     if (path === '/upload') return 'Pipeline Upload';
@@ -33,6 +38,7 @@ export default function TopNav({ onMenuClick = () => {} }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+        <HospitalPicker />
         <AlertsBell />
         {/* The full timestamp wraps to three lines on a phone and pushed the
             header to 133px tall. Narrow screens get the time only; the date is

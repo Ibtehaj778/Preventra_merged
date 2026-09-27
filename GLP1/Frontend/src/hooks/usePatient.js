@@ -1,24 +1,38 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../data/api";
 
-// No stand-in data: a patient the backend refuses (not yours, or not there)
-// must read as unavailable, never as someone else's record. Every other hook
-// keeps its mock fallback for now; this is the one that shows a person.
-export function usePatient(id) {
-  const numId = Number(id);
-  const [data, setData]       = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+/**
+ * One patient: the overview layer first (risk, care team, insurer, and whether
+ * the clinical details are open to this user), then the record itself once it
+ * is. Hospital admins and insurers give a reason before that second call is
+ * made (Backend/core/access.py); everyone else gets both at once.
+ *
+ * No stand-in data: a patient the backend refuses reads as unavailable, never
+ * as someone else's record.
+ */
+export function usePatientRecord(id) {
+  const [state, setState] = useState({ summary: null, data: null, loading: true, error: null });
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    if (id == null) return;
-    let current = true;
-    api.getPatient(numId)
-      .then((res) => { if (current) { setData(res); setError(null); } })
-      .catch((err) => { if (current) { setData(null); setError(err); } })
-      .finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
-  }, [id, numId]);
+    if (id == null) return undefined;
+    let live = true;
+    api.getPatientSummary(Number(id))
+      .then((summary) => {
+        if (!live) return null;
+        if (summary.detail_access === "reason_required") {
+          setState({ summary, data: null, loading: false, error: null });
+          return null;
+        }
+        return api.getPatient(Number(id)).then((data) => {
+          if (live) setState({ summary, data, loading: false, error: null });
+        });
+      })
+      .catch((error) => { if (live) setState({ summary: null, data: null, loading: false, error }); });
+    return () => { live = false; };
+  }, [id, version]);
 
-  return { data, loading, error };
+  // After a reason is given or the care team changes.
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
+  return { ...state, reload };
 }

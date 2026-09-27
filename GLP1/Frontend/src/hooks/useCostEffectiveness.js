@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
 import { api } from "../data/api";
-import { ceaData as mockCEA, segmentProfiles as mockSegments } from "../data/mockData";
 
-const FALLBACK = { cea: mockCEA, benchmarks: null };
-
+// null until loaded - never stand-in cost figures.
 export function useCostEffectiveness() {
-  const [data, setData]       = useState(FALLBACK);
+  const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
   useEffect(() => {
+    let live = true;
     api.getCostEffectiveness()
-      .then((res) => setData(res))
-      .catch((err) => setError(err))
-      .finally(() => setLoading(false));
+      .then((res) => { if (live) setData(res); })
+      .catch((err) => { if (live) setError(err); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
   }, []);
 
   return { data, loading, error };

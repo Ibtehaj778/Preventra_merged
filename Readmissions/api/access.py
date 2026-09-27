@@ -26,6 +26,18 @@ What each role sees:
 
 A patient with no ownership record is visible to the superadmin only; the seed
 script and every create path write one.
+
+The superadmin can also look at one hospital at a time, through the hospital
+picker (the X-Hospital-Id header). It then sees exactly what that hospital's
+admin sees. Nobody else can use the header.
+
+Two layers of detail. Hospital admins and insurers oversee patients rather than
+treat them, so by default they get the overview layer: who the patient is,
+their risk, their care team and their insurer. The clinical layer - diagnoses,
+risk drivers, notes, alerts, trend - opens one patient at a time, after they
+give a reason, which is written to the access log (api/access_log.py). The
+superadmin is never asked but is logged too. Everyone else who can see a
+patient sees all of it.
 """
 from __future__ import annotations
 
@@ -51,7 +63,73 @@ ACTIONS = {
     # hospital at once, so it stays with our team until it can run per hospital.
     "run_sweeps":     ("superadmin",),
     "clear_cache":    ("superadmin",),
+    # The hospital pages. Doctors and nurses work from their own patient list,
+    # so they get neither.
+    "view_overview":  ("superadmin", "hospital_admin", "case_manager", "insurer"),
+    "view_staff":     ("superadmin", "hospital_admin", "case_manager"),
+    # A doctor's alert inbox is clinical content about several patients at
+    # once, so it is for the care team, not for the roles that must give a
+    # reason per patient.
+    "read_inboxes":   ("superadmin", "doctor", "nurse", "case_manager"),
 }
+
+# ------------------------------------------------ overview and clinical layer
+REASON_ROLES = ("hospital_admin", "insurer")
+
+# What a hospital admin or insurer may give as the reason for opening a
+# patient's clinical details. Stored as the key, shown as the label.
+REASONS = {
+    "care_coordination": "Care coordination",
+    "incident_review":   "Complaint / incident review",
+    "audit":             "Audit",
+    "billing":           "Billing query",
+}
+SUPERADMIN_REASON = "superadmin"            # logged, never asked for
+
+# The 403 a reason-role gets for the clinical layer of a patient it has not
+# opened this session. A structured detail so the frontends can tell it from
+# any other refusal and show the prompt instead of an error.
+REASON_REQUIRED = {"code": "reason_required",
+                   "message": "Give a reason to open this patient's clinical details"}
+
+# Fields of a worklist row, or a patient record, that belong to the clinical
+# layer. Everything else - id, risk scores and bands, trend status, discharge
+# date, care team, insurer - is the overview layer.
+CLINICAL_FIELDS = frozenset({
+    "primary_diagnosis", "primary_icd_code", "secondary_diagnoses", "diagnoses",
+    "n_diagnoses_coded", "conditions", "clinical_group", "clinical_groups",
+    "group_label", "group_evidence", "group_confidence",
+    "primary_driver_label", "driver_1", "driver_2", "driver_3", "drivers",
+})
+
+# Worklist filters and sorts that would reveal the clinical layer one patient
+# at a time ("which of these patients has heart failure?"). Ignored for the
+# reason roles; counts by condition stay available, as counts.
+CLINICAL_SORTS = frozenset({"diagnosis", "driver"})
+
+
+def needs_reason(user: dict) -> bool:
+    return user["role"] in REASON_ROLES
+
+
+def redact(row: dict) -> dict:
+    """A row with the clinical layer taken out."""
+    return {k: v for k, v in row.items() if k not in CLINICAL_FIELDS}
+
+
+def acting_as(user: dict, hospital_id: Optional[str]) -> dict:
+    """The superadmin looking at one hospital through the hospital picker.
+    Anyone else sending the header is unaffected by it."""
+    hospital_id = (hospital_id or "").strip()
+    if user.get("role") == "superadmin" and hospital_id:
+        return {**user, "acting_hospital_id": hospital_id}
+    return user
+
+
+def hospital_of(user: dict) -> Optional[str]:
+    """The hospital the user is working in: their own, or the one the
+    superadmin picked. None for a superadmin looking at every hospital."""
+    return user.get("acting_hospital_id") or user.get("hospital_id")
 
 
 def require(user: dict, action: str) -> None:
@@ -68,8 +146,10 @@ def patient_scope(db, user: dict) -> Optional[list]:
     """The patient_ids this user may see, or None for no restriction."""
     role, hospital, uid = user["role"], user.get("hospital_id"), str(user["_id"])
     if role == "superadmin":
-        return None
-    if role in ("hospital_admin", "case_manager"):
+        if not user.get("acting_hospital_id"):
+            return None
+        query = {"hospital_id": user["acting_hospital_id"]}
+    elif role in ("hospital_admin", "case_manager"):
         query = {"hospital_id": hospital} if hospital else None
     elif role == "doctor":
         doctor_ids = _doctor_ids_for(db, user)
@@ -117,9 +197,9 @@ def require_patient(scope: Optional[list], patient_id) -> None:
 
 def doctor_query(user: dict) -> dict:
     """Which registry doctors this user may see: their hospital's."""
-    if user["role"] == "superadmin":
+    if user["role"] == "superadmin" and not user.get("acting_hospital_id"):
         return {}
-    return {"hospital_id": user.get("hospital_id") or "__none__"}
+    return {"hospital_id": hospital_of(user) or "__none__"}
 
 
 # ------------------------------------------------------------ scoped reads
@@ -164,11 +244,15 @@ class ScopedDB:
     patients, and whose doctor registry only shows the caller's hospital.
     Everything else passes through untouched."""
 
-    def __init__(self, db, user: dict, scope: Optional[list]):
+    def __init__(self, db, user: dict, scope: Optional[list], opened=None):
         self._db = db
         self.user = user
         self.scope = scope
         self.client = db.client
+        # For the reason roles: the patients whose clinical layer they opened
+        # this session. The chatbot reads these two (chatbot_service.guard).
+        self.redacted = needs_reason(user)
+        self.opened = {str(p) for p in (opened or ())}
 
     def __getitem__(self, name):
         if name in PATIENT_COLLECTIONS:

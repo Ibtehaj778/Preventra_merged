@@ -14,23 +14,58 @@ export const AUTH_BASE = (import.meta.env.VITE_AUTH_URL ?? "http://localhost:800
 // persists the token here on every sign-in and on the portal hand-off.
 const TOKEN_KEY = "glp1_token";
 
+// The superadmin's hospital picker. The choice rides on every request as a
+// header; the backend ignores it for everyone else. Per tab, like a session.
+const HOSPITAL_KEY = "glp1_acting_hospital";
+
+export function getActingHospital() {
+  try { return sessionStorage.getItem(HOSPITAL_KEY) || ""; } catch { return ""; }
+}
+
+export function setActingHospital(hospitalId) {
+  try {
+    if (hospitalId) sessionStorage.setItem(HOSPITAL_KEY, hospitalId);
+    else sessionStorage.removeItem(HOSPITAL_KEY);
+  } catch { /* private mode: the picker just will not stick */ }
+}
+
 /** Every /api route needs a bearer token signed by the auth service. */
 function authHeaders(extra = {}) {
   const token = localStorage.getItem(TOKEN_KEY);
-  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
+  const hospital = getActingHospital();
+  return {
+    ...extra,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(hospital ? { "X-Hospital-Id": hospital } : {}),
+  };
+}
+
+/** A refusal, keeping the status and - for "give a reason first" - its code,
+ *  so a page can show the prompt rather than an error. */
+export class ApiError extends Error {
+  constructor(message, status, code) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
 }
 
 /** 401 means the session is over: the token expired or the account was
  *  removed. End it here rather than let the caller fall back to mock data,
  *  which would show a signed-out user a dashboard of made-up numbers. */
-function check(res, path) {
+async function check(res, path) {
   if (res.status === 401) endSession();
-  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({})))?.detail;
+    const message = typeof detail === "string" ? detail
+      : detail?.message || `API ${path} \u2192 ${res.status}`;
+    throw new ApiError(message, res.status, detail?.code);
+  }
 }
 
 async function get(path) {
   const res = await fetch(`${BASE}${path}`, { headers: authHeaders() });
-  check(res, path);
+  await check(res, path);
   return res.json();
 }
 
@@ -40,13 +75,13 @@ async function post(path, body) {
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
-  check(res, path);
+  await check(res, path);
   return res.json();
 }
 
 async function del(path) {
   const res = await fetch(`${BASE}${path}`, { method: "DELETE", headers: authHeaders() });
-  check(res, path);
+  await check(res, path);
   return res.json();
 }
 
@@ -94,6 +129,16 @@ export const api = {
   getCostEffectiveness: ()       => get("/api/cost-effectiveness"),
   getBudgetImpact:      (body)   => post("/api/budget-impact", body),
   getModelInfo:         ()       => get("/api/model/info"),
+
+  // Hospital pages - overview layer only (Backend/core/hospital.py)
+  getOverview:          ()       => get("/api/overview"),
+  getStaff:             ()       => get("/api/staff"),
+  /** { patient_ids, doctor_id?, nurse_ids?, add_nurse_ids? } */
+  setCareTeam:          (body)   => post("/api/care-team", body),
+  /** A patient's overview layer, and whether their clinical details are open yet. */
+  getPatientSummary:    (id)     => get(`/api/patients/${id}/summary`),
+  /** Open one patient's clinical details with a reason (hospital admins, insurers). */
+  openPatient:          (id, reason) => post(`/api/patients/${id}/open`, { reason }),
 
   // Consequence Model (Phase 4 "Cost of Inaction" screen)
   getDownstreamCost:    ()       => get("/api/consequence/downstream-cost"),

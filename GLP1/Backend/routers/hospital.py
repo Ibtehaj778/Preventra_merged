@@ -1,0 +1,44 @@
+"""
+The hospital pages: Overview, Staff and care-team assignment - see
+core/hospital.py. Overview layer only, so no reason is asked for any of it.
+"""
+
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+
+from core import hospital
+from core.access import ASSIGN_ROLES, OVERVIEW_ROLES, STAFF_ROLES, require_role, scope_of
+
+router = APIRouter()
+
+
+@router.get("/overview")
+async def get_overview(user: dict = Depends(require_role(*OVERVIEW_ROLES)),
+                       scope: Optional[list] = Depends(scope_of)):
+    """How is my hospital doing? Not for doctors and nurses, who land on their
+    own patient list instead."""
+    return await hospital.overview(user, scope)
+
+
+@router.get("/staff")
+async def get_staff(user: dict = Depends(require_role(*STAFF_ROLES)),
+                    scope: Optional[list] = Depends(scope_of)):
+    """Who looks after whom: doctors and nurses with their patient counts."""
+    return await hospital.staff(user, scope)
+
+
+class CareTeamRequest(BaseModel):
+    patient_ids: List[int]
+    doctor_id: Optional[str] = None
+    nurse_ids: Optional[List[str]] = None
+    add_nurse_ids: Optional[List[str]] = None
+
+
+@router.post("/care-team")
+async def set_care_team(req: CareTeamRequest, user: dict = Depends(require_role(*ASSIGN_ROLES)),
+                        scope: Optional[list] = Depends(scope_of)):
+    """Assign a doctor and nurses to one or more patients, effective at once."""
+    return await hospital.assign(user, scope, req.patient_ids, doctor_id=req.doctor_id,
+                                 nurse_ids=req.nurse_ids, add_nurse_ids=req.add_nurse_ids)

@@ -8,6 +8,7 @@ import { SectionHeader, ProgressBar } from '../components/shared';
 import { SEGMENT_COLORS, SEGMENT_LABELS, SEGMENT_SHORT, calcBudgetImpact } from '../data/mockData';
 import { useSegments } from '../hooks/useSegments';
 import { useRole } from '../context/RoleContext';
+import PageState from '../components/shared/PageState';
 
 const fmt$ = n => `$${n.toLocaleString()}`;
 const fmtNet = n => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(0)}K` : `$${n}`;
@@ -55,15 +56,17 @@ const COMPARE_ROWS = [
 
 export default function SegmentExplorer() {
   const { isInsurer } = useRole();
-  const { segments: segmentProfiles } = useSegments();
+  const { segments: segmentProfiles, error: segmentsError } = useSegments();
   const [active, setActive] = useState(0);
   const [mode, setMode]     = useState('single');
   const [roiPct, setRoiPct] = useState(15);
 
+  const roiResults = useMemo(() => calcBudgetImpact(roiPct, 500, 100), [roiPct]);
+
+  if (!segmentProfiles) return <PageState error={segmentsError} label="the segments" />;
+
   const seg   = segmentProfiles[active] ?? segmentProfiles[0];
   const color = SEGMENT_COLORS[active];
-
-  const roiResults = useMemo(() => calcBudgetImpact(roiPct, 500, 100), [roiPct]);
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-5 animate-fade-in">

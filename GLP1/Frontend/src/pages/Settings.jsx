@@ -7,6 +7,7 @@ import { useRole } from '../context/RoleContext';
 import { useAuth } from '../context/AuthContext';
 import { AUTH_BASE } from '../data/api';
 import UserManagement from '../components/shared/UserManagement';
+import PageState from '../components/shared/PageState';
 
 // Stable, module-level: UserManagement reloads whenever this function changes.
 const getToken = () => localStorage.getItem('glp1_token');
@@ -58,10 +59,10 @@ function Collapsible({ title, children }) {
 export default function Settings() {
   const { role, roleLabel, isCostView } = useRole();
   const { user } = useAuth();
-  const { data: modelInfo } = useModelInfo();
+  const { data: modelInfo, error: modelError } = useModelInfo();
   const isManager = role === 'superadmin' || role === 'hospital_admin';
 
-  const PERF_METRICS = [
+  const PERF_METRICS = modelInfo && [
     ['Accuracy',  modelInfo.accuracy,  'Primary classification accuracy on held-out test set'],
     ['Precision', modelInfo.precision, 'True positive rate among all predicted positives'],
     ['Recall',    modelInfo.recall,    'Fraction of true dropout patients correctly identified'],
@@ -80,6 +81,7 @@ export default function Settings() {
       )}
 
       {/* ── Model performance ─────────────────────────────────── */}
+      {!modelInfo ? <PageState error={modelError} label="the model details" /> : (
       <div className="card p-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#EBF4FF' }}>
@@ -126,6 +128,7 @@ export default function Settings() {
           ))}
         </div>
       </div>
+      )}
 
       {/* ── Data sources ─────────────────────────────────────── */}
       <div className="card p-6">

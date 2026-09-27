@@ -8,6 +8,8 @@ removal made by an admin applies to the very next request, not when the token
 expires.
 """
 
+import hashlib
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import Depends, HTTPException
@@ -72,4 +74,9 @@ async def current_user(
         raise HTTPException(status_code=403, detail="Set a new password before continuing")
     if "glp1" not in user["app_access"]:
         raise HTTPException(status_code=403, detail="This account doesn't have access to GLP-1")
+    # Which sign-in this is, for the access log (core/access_log.py): the
+    # token's `sid`, or for an older token without one, a hash of it. The same
+    # rule as Readmissions/api/access_log.session_of.
+    user["session"] = (claims.get("sid")
+                       or hashlib.sha256(credentials.credentials.encode()).hexdigest()[:32])
     return user

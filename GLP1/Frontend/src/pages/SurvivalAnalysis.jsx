@@ -6,6 +6,7 @@ import {
 import { SectionHeader, CheckpointTable } from '../components/shared';
 import { SEGMENT_COLORS, SEGMENT_LABELS } from '../data/mockData';
 import { useSurvival } from '../hooks/useSurvival';
+import PageState from '../components/shared/PageState';
 
 // Micro sparkline helper
 function Sparkline({ cluster, color, curves }) {
@@ -23,10 +24,10 @@ function Sparkline({ cluster, color, curves }) {
 }
 
 export default function SurvivalAnalysis() {
-  const { data: survivalData }  = useSurvival();
-  const survivalCurves          = survivalData.curves;
-  const survivalCheckpoints     = survivalData.checkpoints;
-  const medianSurvival          = survivalData.medianSurvival;
+  const { data: survivalData, error: survivalError } = useSurvival();
+  const survivalCurves          = survivalData?.curves;
+  const survivalCheckpoints     = survivalData?.checkpoints;
+  const medianSurvival          = survivalData?.medianSurvival;
 
   const [visible, setVisible]   = useState([0, 1, 2, 3]);
   const [showCI, setShowCI]     = useState(false);
@@ -49,6 +50,8 @@ export default function SurvivalAnalysis() {
       return point;
     });
   }, [survivalCurves]);
+
+  if (!survivalData) return <PageState error={survivalError} label="the survival analysis" />;
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-5 animate-fade-in">

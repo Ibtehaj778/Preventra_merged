@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Search, Filter, ChevronLeft, ChevronRight, DollarSign, ChevronUp, ChevronDown, Settings2, X, Eye, EyeOff, Building2 } from 'lucide-react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Search, Filter, ChevronLeft, ChevronRight, DollarSign, ChevronUp, ChevronDown, Settings2, X, Building2, Users } from 'lucide-react';
+import CareTeamDialog from '../components/hospital/CareTeamDialog';
 import { SegmentDot } from '../components/shared';
 import { SkeletonTable } from '../components/shared/LoadingSkeleton';
 import { SEGMENT_SHORT, SEGMENT_COLORS } from '../data/mockData';
@@ -70,22 +71,27 @@ function RiskBar({ prob, prediction }) {
 }
 
 /* ── Column Definitions ───────────────────────────────────────────── */
+// `clinical` columns are the clinical layer: absent from a hospital admin's or
+// insurer's rows (the server leaves them out), so never offered to them.
 const ALL_COLUMNS = [
   { key: 'risk',      label: 'Risk',       alwaysOn: true,  sortable: true,  sortKey: 'dropout_prob' },
-  { key: 'segment',   label: 'Segment',    alwaysOn: false, sortable: false },
-  { key: 'driver_1',  label: 'Top Driver', alwaysOn: false, sortable: false },
-  { key: 'driver_2',  label: 'Driver 2',   alwaysOn: false, sortable: false },
-  { key: 'drug',      label: 'Drug',       alwaysOn: false, sortable: false },
-  { key: 'oop_cost',  label: 'OOP Cost',   alwaysOn: false, sortable: true,  sortKey: 'avg_oop_cost' },
-  { key: 'bmi',       label: 'BMI',        alwaysOn: false, sortable: true,  sortKey: 'BMXBMI' },
-  { key: 'age',       label: 'Age',        alwaysOn: false, sortable: true,  sortKey: 'RIDAGEYR' },
-  { key: 'hba1c',     label: 'HbA1c',      alwaysOn: false, sortable: true,  sortKey: 'LBXGH' },
+  { key: 'care_team', label: 'Care Team',  alwaysOn: false, sortable: false },
+  { key: 'insurer',   label: 'Insurer',    alwaysOn: false, sortable: false },
+  { key: 'segment',   label: 'Segment',    alwaysOn: false, sortable: false, clinical: true },
+  { key: 'driver_1',  label: 'Top Driver', alwaysOn: false, sortable: false, clinical: true },
+  { key: 'driver_2',  label: 'Driver 2',   alwaysOn: false, sortable: false, clinical: true },
+  { key: 'drug',      label: 'Drug',       alwaysOn: false, sortable: false, clinical: true },
+  { key: 'pharmacy',  label: 'Pharmacy',   alwaysOn: false, sortable: false, clinical: true },
+  { key: 'oop_cost',  label: 'OOP Cost',   alwaysOn: false, sortable: true,  sortKey: 'avg_oop_cost', clinical: true },
+  { key: 'bmi',       label: 'BMI',        alwaysOn: false, sortable: true,  sortKey: 'BMXBMI', clinical: true },
+  { key: 'age',       label: 'Age',        alwaysOn: false, sortable: true,  sortKey: 'RIDAGEYR', clinical: true },
+  { key: 'hba1c',     label: 'HbA1c',      alwaysOn: false, sortable: true,  sortKey: 'LBXGH', clinical: true },
 ];
 
-const DEFAULT_VISIBLE = ['risk', 'segment', 'driver_1', 'drug', 'oop_cost', 'bmi'];
+const DEFAULT_VISIBLE = ['risk', 'care_team', 'segment', 'driver_1', 'drug', 'insurer'];
 
 /* ── Column Settings Dropdown ─────────────────────────────────────── */
-function ColumnSettings({ visible, setVisible }) {
+function ColumnSettings({ visible, setVisible, columns }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -116,7 +122,7 @@ function ColumnSettings({ visible, setVisible }) {
         <div className="absolute right-0 top-full mt-1 z-50 card p-3 shadow-lg" style={{ minWidth: 200 }}>
           <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Toggle Columns</div>
           <div className="space-y-1">
-            {ALL_COLUMNS.map(col => (
+            {columns.map(col => (
               <label
                 key={col.key}
                 className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-gray-50 cursor-pointer text-xs"
@@ -183,13 +189,19 @@ function SortHeader({ label, sortKey: sk, currentSort, currentDir, onSort }) {
 /* ── Main Component ───────────────────────────────────────────────── */
 export default function PatientRiskPanel() {
   const navigate = useNavigate();
-  const { isCostView } = useRole();
-  const { patients, loading } = usePatients();
+  const { isCostView, needsReason, canAssign } = useRole();
+  const { patients, loading, redacted, reload } = usePatients();
+  // Filters the Overview and the Staff page link in with.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const care = { doctor: searchParams.get('doctor'), nurse: searchParams.get('nurse'),
+                 unassigned: searchParams.get('unassigned') };
   const [search, setSearch]           = useState('');
   const [segFilter, setSegFilter]     = useState('All');
   const [molFilter, setMolFilter]     = useState('All');
-  const [minRisk, setMinRisk]         = useState(0);
-  const [predFilter, setPredFilter]   = useState('All');
+  const [minRisk, setMinRisk]         = useState(() => Number(searchParams.get('min_risk')) || 0);
+  const [predFilter, setPredFilter]   = useState(() => searchParams.get('prediction') || 'All');
+  const [selected, setSelected]       = useState([]);
+  const [assigning, setAssigning]     = useState(null);
   const [financialOnly, setFinancialOnly] = useState(false);
   const [sortKey, setSortKey]         = useState('dropout_prob');
   const [sortDir, setSortDir]         = useState('desc');
@@ -199,23 +211,52 @@ export default function PatientRiskPanel() {
 
   const filtered = useMemo(() => {
     let d = [...patients];
-    if (search)            d = d.filter(p => String(p.patient_idx).includes(search) || p.driver_1.toLowerCase().includes(search.toLowerCase()));
+    // driver_1 is absent from an overview-layer row, so search is by number there.
+    if (search)            d = d.filter(p => String(p.patient_idx).includes(search) || (p.driver_1 || '').toLowerCase().includes(search.toLowerCase()));
     if (segFilter !== 'All') d = d.filter(p => SEGMENT_SHORT[p.cluster] === segFilter);
     if (molFilter !== 'All') d = d.filter(p => p.assigned_molecule === molFilter);
     if (predFilter !== 'All') d = d.filter(p => p.prediction === predFilter);
-    if (financialOnly)     d = d.filter(p => isFinancial(p.driver_1));
+    if (financialOnly)     d = d.filter(p => isFinancial(p.driver_1 || ''));
+    if (care.doctor)       d = d.filter(p => p.doctor?.id === care.doctor);
+    if (care.nurse)        d = d.filter(p => (p.nurses || []).some(n => n.id === care.nurse));
+    if (care.unassigned === 'doctor') d = d.filter(p => !p.doctor);
+    if (care.unassigned === 'nurse')  d = d.filter(p => !(p.nurses || []).length);
     d = d.filter(p => p.dropout_prob * 100 >= minRisk);
     d.sort((a, b) => {
       const av = a[sortKey], bv = b[sortKey];
       return sortDir === 'asc' ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
     });
     return d;
-  }, [patients, search, segFilter, molFilter, predFilter, financialOnly, minRisk, sortKey, sortDir]);
+  }, [patients, search, segFilter, molFilter, predFilter, financialOnly, minRisk, sortKey, sortDir,
+      care.doctor, care.nurse, care.unassigned]);
 
   const pages     = Math.ceil(filtered.length / PAGE_SIZE);
   const visible   = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const highRisk  = filtered.filter(p => p.dropout_prob >= 0.75).length;
-  const financial = filtered.filter(p => isFinancial(p.driver_1)).length;
+  const financial = filtered.filter(p => isFinancial(p.driver_1 || '')).length;
+
+  // The care-team filter, named rather than shown as an id.
+  const careLabel = care.doctor ? `Doctor: ${patients.find(p => p.doctor?.id === care.doctor)?.doctor?.name || 'selected'}`
+    : care.nurse ? `Nurse: ${patients.flatMap(p => p.nurses || []).find(n => n.id === care.nurse)?.name || 'selected'}`
+    : care.unassigned === 'doctor' ? 'No doctor assigned'
+    : care.unassigned === 'nurse' ? 'No nurse assigned' : null;
+  const clearCare = () => {
+    const next = new URLSearchParams(searchParams);
+    ['doctor', 'nurse', 'unassigned'].forEach(k => next.delete(k));
+    setSearchParams(next);
+  };
+
+  const pageIdxs = visible.map(p => p.patient_idx);
+  const allSelected = pageIdxs.length > 0 && pageIdxs.every(i => selected.includes(i));
+  const toggleRow = (i) => setSelected(s => (s.includes(i) ? s.filter(x => x !== i) : [...s, i]));
+  const toggleAll = () => setSelected(allSelected ? selected.filter(i => !pageIdxs.includes(i))
+                                                  : [...new Set([...selected, ...pageIdxs])]);
+  // One hospital's staff for the dialog; a mixed selection (superadmin, all
+  // hospitals) is refused by the server anyway.
+  const selectionHospital = (() => {
+    const hs = new Set(patients.filter(p => selected.includes(p.patient_idx)).map(p => p.hospital_id));
+    return hs.size === 1 ? [...hs][0] : undefined;
+  })();
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -261,6 +302,21 @@ export default function PatientRiskPanel() {
             </div>
           </div>
         );
+      case 'care_team':
+        return (
+          <div style={{ maxWidth: 180 }}>
+            <div className="text-xs truncate" style={{ color: p.doctor ? '#2D3748' : '#C62828' }}>
+              {p.doctor ? p.doctor.name : 'No doctor'}
+            </div>
+            <div className="text-[10px] text-gray-400 truncate mt-0.5">
+              {(p.nurses || []).length ? p.nurses.map(n => n.name).join(', ') : 'No nurse'}
+            </div>
+          </div>
+        );
+      case 'insurer':
+        return <span className="text-xs text-gray-600">{p.insurer?.name || '—'}</span>;
+      case 'pharmacy':
+        return <span className="text-xs text-gray-600">{p.pharmacy || '—'}</span>;
       case 'drug':
         return (
           <span className="text-xs font-mono px-2 py-1 rounded-md" style={{ background: '#F7FAFC', color: '#4A5568' }}>
@@ -280,7 +336,9 @@ export default function PatientRiskPanel() {
     }
   };
 
-  const visibleColumns = ALL_COLUMNS.filter(c => hasCol(c.key));
+  // The overview layer (hospital admins, insurers) never offers a clinical column.
+  const offeredColumns = ALL_COLUMNS.filter(c => !(redacted && c.clinical));
+  const visibleColumns = offeredColumns.filter(c => hasCol(c.key));
 
   if (loading) {
     return (
@@ -303,8 +361,18 @@ export default function PatientRiskPanel() {
 
   return (
     <div className="risk-panel-page animate-fade-in">
+      {/* ── Overview-layer banner (hospital admins, insurers) ─────── */}
+      {needsReason && (
+        <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium mb-4 animate-fade-up"
+          style={{ background: '#EBF4FF', color: '#1B4F8A', border: '1px solid #BFDBFE' }}>
+          <Building2 size={15} />
+          Adherence risk, care team and insurer for each patient. Vitals, medication and dropout drivers open one
+          patient at a time, with a reason.
+        </div>
+      )}
+
       {/* ── Finance-view context banner ──────────────────────────── */}
-      {isCostView && (
+      {isCostView && !needsReason && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 px-4 py-3 rounded-xl text-sm font-medium mb-4 animate-fade-up"
           style={{ background: '#EBF4FF', color: '#1B4F8A', border: '1px solid #BFDBFE' }}>
           <span className="flex items-center gap-2.5">
@@ -322,10 +390,10 @@ export default function PatientRiskPanel() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-800" style={{ fontFamily: 'DM Serif Display, serif' }}>
-            Patient Risk Panel
+            Patients
           </h1>
           <p className="text-xs text-gray-400 mt-0.5">
-            {filtered.length} patients · {highRisk} critical risk · {financial} financial barrier
+            {filtered.length} patients · {highRisk} critical risk{!redacted && ` · ${financial} financial barrier`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -334,7 +402,7 @@ export default function PatientRiskPanel() {
             <input
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(0); }}
-              placeholder="Search patients or drivers…"
+              placeholder={redacted ? 'Search by patient number…' : 'Search patients or drivers…'}
               className="text-xs pl-8 pr-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white w-full sm:w-[220px]"
             />
           </div>
@@ -355,9 +423,27 @@ export default function PatientRiskPanel() {
               </span>
             )}
           </button>
-          <ColumnSettings visible={visibleCols} setVisible={setVisibleCols} />
+          {canAssign && selected.length > 0 && (
+            <button onClick={() => setAssigning(selected)}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg text-white"
+              style={{ background: 'var(--color-primary)' }}>
+              <Users size={13} /> Assign care team ({selected.length})
+            </button>
+          )}
+          <ColumnSettings visible={visibleCols} setVisible={setVisibleCols} columns={offeredColumns} />
         </div>
       </div>
+
+      {careLabel && (
+        <div className="flex items-center gap-2 mb-4 text-xs">
+          <span className="text-gray-400">Showing</span>
+          <span className="inline-flex items-center gap-1.5 font-medium px-2.5 py-1 rounded-full"
+                style={{ background: '#EBF4FF', color: 'var(--color-primary)' }}>
+            {careLabel}
+            <button onClick={clearCare} aria-label="Clear care-team filter"><X size={11} /></button>
+          </span>
+        </div>
+      )}
 
       {/* ── Collapsible Filter Bar ─────────────────────────────── */}
       {filtersOpen && (
@@ -371,8 +457,8 @@ export default function PatientRiskPanel() {
             </button>
           </div>
           <div className="flex flex-wrap gap-3 items-end">
-            <FilterSelect label="Segment" value={segFilter} onChange={setSegFilter} options={SEGMENTS} />
-            <FilterSelect label="Molecule" value={molFilter} onChange={setMolFilter} options={MOLECULES} />
+            {!redacted && <FilterSelect label="Segment" value={segFilter} onChange={setSegFilter} options={SEGMENTS} />}
+            {!redacted && <FilterSelect label="Molecule" value={molFilter} onChange={setMolFilter} options={MOLECULES} />}
             <FilterSelect label="Prediction" value={predFilter} onChange={setPredFilter}
               options={['All', 'Dropout Risk', 'Likely Adherent']} />
 
@@ -386,7 +472,7 @@ export default function PatientRiskPanel() {
             </div>
 
             {/* Financial toggle */}
-            <div className="flex-shrink-0">
+            {!redacted && <div className="flex-shrink-0">
               <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Financial Only</label>
               <label className="flex items-center gap-2 cursor-pointer mt-1">
                 <div className="relative flex-shrink-0">
@@ -400,7 +486,7 @@ export default function PatientRiskPanel() {
                 </div>
                 <DollarSign size={12} className="text-orange-500" />
               </label>
-            </div>
+            </div>}
 
             {/* Reset */}
             <button onClick={resetFilters}
@@ -475,6 +561,12 @@ export default function PatientRiskPanel() {
           <table className="data-table">
             <thead>
               <tr>
+                {canAssign && (
+                  <th style={{ width: 32 }}>
+                    <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                      aria-label="Select every patient on this page" />
+                  </th>
+                )}
                 <th style={{ width: 50 }}>#</th>
                 {visibleColumns.map(col => (
                   <th key={col.key}>
@@ -498,6 +590,12 @@ export default function PatientRiskPanel() {
               {visible.map((p) => (
                 <tr key={p.patient_idx} className="cursor-pointer group"
                     onClick={() => navigate(`/patients/${p.patient_idx}`)}>
+                  {canAssign && (
+                    <td onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.includes(p.patient_idx)}
+                        onChange={() => toggleRow(p.patient_idx)} aria-label={`Select patient ${p.patient_idx}`} />
+                    </td>
+                  )}
                   <td>
                     <span className="text-xs font-mono text-gray-400">#{String(p.patient_idx).padStart(3, '0')}</span>
                   </td>
@@ -555,6 +653,19 @@ export default function PatientRiskPanel() {
           </div>
         </div>
       </div>
+
+      {assigning && (
+        <CareTeamDialog
+          patientIdxs={assigning}
+          hospitalId={selectionHospital}
+          current={assigning.length === 1 ? (() => {
+            const row = patients.find(p => p.patient_idx === assigning[0]);
+            return { doctorId: row?.doctor?.id || '', nurseIds: (row?.nurses || []).map(n => n.id) };
+          })() : undefined}
+          onClose={() => setAssigning(null)}
+          onSaved={() => { setAssigning(null); setSelected([]); reload(); }}
+        />
+      )}
     </div>
   );
 }

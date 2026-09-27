@@ -151,7 +151,39 @@ def _report_ungrounded(answer: str, payload, function_name: str) -> None:
               f"{', '.join(sorted(unsupported))}")
 
 
+# Hospital admins and insurers see the overview layer of their patients, and
+# one patient's clinical layer only after opening it with a reason (see
+# api/access.py). Questions are answered from the same layers: counts and risk
+# lists always; a patient's diagnoses and drivers once that patient is open.
+# The view passed in says which applies - `redacted` and `opened` are set on
+# access.ScopedDB; anything else (a test's raw database) is unrestricted.
+OVERVIEW_FIELDS = frozenset({"current_score", "discharge_score", "trend_delta", "weeks_tracked",
+                             "current_band", "risk_band", "monitoring_status"})
+_ONE_PATIENT = ("get_patient_drivers", "get_patient_details")
+
+NEEDS_REASON_MESSAGE = ("That is part of the patient's clinical details. Open the patient from "
+                        "the Patients page and give a reason first, then ask again.")
+LIST_BY_RISK_ONLY_MESSAGE = ("I can list your patients by risk and trend, but not by diagnosis, "
+                             "condition or other clinical details - those open one patient at a "
+                             "time, with a reason, from the Patients page.")
+
+
+def guard(name: str, args: dict, db) -> None:
+    """Refuse a function call that would reach past the caller's layer."""
+    if not getattr(db, "redacted", False):
+        return
+    if name in _ONE_PATIENT and str(args.get("patient_id", "")) not in db.opened:
+        raise LookupError(NEEDS_REASON_MESSAGE)
+    if name == "list_patients":
+        used = {f.get("field") for f in (args.get("filters") or []) if isinstance(f, dict)}
+        used |= {str(f) for f in (args.get("fields") or [])}
+        used.add(args.get("sort_by") or "current_score")
+        if used - OVERVIEW_FIELDS - {None, "patient_id"}:
+            raise LookupError(LIST_BY_RISK_ONLY_MESSAGE)
+
+
 def _dispatch(name: str, args: dict, db):
+    guard(name, args, db)
     if name == "count_patients":
         return chatbot_queries.count_patients(db, **_cohort_args(args))
 

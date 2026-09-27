@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional
 
+from fastapi import HTTPException
 from google.genai import types
 
 from routers import (
@@ -93,6 +94,11 @@ async def _search_patients(
         sort_by=sort_by,
         sort_dir=sort_dir,
         search=search,
+        # Called directly, not through FastAPI, so every parameter must be
+        # given: an omitted one would be its Query(...) default object.
+        doctor=None,
+        nurse=None,
+        unassigned=None,
         user=ctx.user,
         scope=ctx.scope,
     )
@@ -307,6 +313,14 @@ async def dispatch_tool(name: str, args: dict, ctx: ToolContext) -> tuple[Any, s
     try:
         result = await handler(ctx, **(args or {}))
         return _serialize(result), None
+    except HTTPException as exc:
+        # The same refusals the screens get - not found, or a hospital admin or
+        # insurer who has not opened this patient with a reason yet.
+        detail = exc.detail
+        msg = detail.get("message", str(detail)) if isinstance(detail, dict) else str(detail)
+        if isinstance(detail, dict) and detail.get("code") == "reason_required":
+            msg += ". Open the patient from the Patients page and give a reason first, then ask again."
+        return {"error": msg}, msg
     except Exception as exc:  # noqa: BLE001
         logger.exception("Tool '%s' raised", name)
         return {"error": f"{type(exc).__name__}: {exc}"}, str(exc)
@@ -325,7 +339,8 @@ async def build_snapshot(ctx: ToolContext) -> str:
     system prompt so the LLM can answer aggregate questions with zero tool calls.
     Cached for 60s per account to keep response latency low."""
     now = time.monotonic()
-    cached = _snapshot_cache.get(ctx.user["id"])
+    key = f'{ctx.user["id"]}:{ctx.user.get("acting_hospital_id") or ""}'
+    cached = _snapshot_cache.get(key)
     if cached and now - cached["ts"] < _SNAPSHOT_TTL_SECONDS:
         return cached["text"]
 
@@ -384,7 +399,7 @@ async def build_snapshot(ctx: ToolContext) -> str:
     )
 
     text = "\n".join(lines)
-    _snapshot_cache[ctx.user["id"]] = {"ts": now, "text": text}
+    _snapshot_cache[key] = {"ts": now, "text": text}
     return text
 
 

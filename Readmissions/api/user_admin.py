@@ -302,4 +302,4 @@ def change_password(db, token: str, current_password: str, new_password: str) ->
     fields = {"password_hash": auth.hash_password(new_password),
               "must_change_password": False, "updated_at": auth._now()}
     auth.users(db).update_one({"_id": account["_id"]}, {"$set": fields})
-    return auth.issue_token({**account, **fields}, exp=claims["exp"])
+    return auth.issue_token({**account, **fields}, exp=claims["exp"], sid=claims.get("sid"))

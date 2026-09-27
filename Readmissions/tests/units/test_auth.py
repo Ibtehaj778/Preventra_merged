@@ -53,9 +53,11 @@ def test_signup_returns_a_token_carrying_the_agreed_claims(db):
     out = auth.signup(db, "New.User@Test.com", "correct-horse")
     c = claims_of(out)
     assert set(c) == {"sub", "email", "role", "status", "hospital_id", "must_change_password",
-                      "app_access", "exp"}
+                      "app_access", "sid", "exp"}
     assert c["email"] == "new.user@test.com"          # normalised
     assert c["app_access"] == ["glp1", "readmissions"]
+    # A new sign-in id each time, so two sign-ins are never one session.
+    assert c["sid"] != claims_of(auth.login(db, "new.user@test.com", "correct-horse"))["sid"]
 
 
 def test_a_self_signup_is_a_pending_case_manager_with_no_hospital(db):

@@ -10,15 +10,16 @@ import { SEGMENT_COLORS, SEGMENT_SHORT, SEGMENT_LABELS } from '../data/mockData'
 import { useCostEffectiveness } from '../hooks/useCostEffectiveness';
 import { useSegments } from '../hooks/useSegments';
 import { useRole } from '../context/RoleContext';
+import PageState from '../components/shared/PageState';
 
 const ICER_THRESHOLD = 50000;
 
 export default function CostEffectiveness() {
   const { isCostView }      = useRole();
-  const { data: costData } = useCostEffectiveness();
-  const { segments }       = useSegments();
-  const ceaData  = costData.cea;
-  const ADHERENCE = segments.map(s => s.adherence);
+  const { data: costData, error: costError } = useCostEffectiveness();
+  const { segments, error: segmentsError }  = useSegments();
+  const ceaData  = useMemo(() => costData?.cea ?? [], [costData]);
+  const ADHERENCE = (segments ?? []).map(s => s.adherence);
   const [metric, setMetric]           = useState('hba1c');  // 'hba1c' | 'weight'
   const [comparator, setComparator]   = useState('insulin'); // 'insulin' | 'sglt2'
   const [visibleSegs, setVisibleSegs] = useState([0, 1, 2, 3]);
@@ -26,8 +27,10 @@ export default function CostEffectiveness() {
   const toggleSeg = (i) =>
     setVisibleSegs(v => v.includes(i) ? v.filter(x => x !== i) : [...v, i]);
 
+  // ceaData is a dependency: without it these kept whatever the first render
+  // had, which used to be the stand-in figures, for the life of the page.
   const filteredCEA = useMemo(() =>
-    ceaData.filter((_, i) => visibleSegs.includes(i)), [visibleSegs]);
+    ceaData.filter((_, i) => visibleSegs.includes(i)), [ceaData, visibleSegs]);
 
   const scatterData = useMemo(() =>
     filteredCEA.map(s => ({
@@ -55,11 +58,15 @@ export default function CostEffectiveness() {
   // Rankings sorted by cost_per_hba1c (ascending = better)
   const ranked = useMemo(() =>
     [...ceaData].sort((a, b) => a.cost_per_hba1c - b.cost_per_hba1c),
-  []);
+  [ceaData]);
 
   // Quadrant averages for reference lines (all data, not filtered)
   const avgOutcome = ceaData.reduce((a, s) => a + (metric === 'hba1c' ? s.hba1c_reduction : s.weight_loss), 0) / ceaData.length;
   const avgCost    = ceaData.reduce((a, s) => a + s.annual_cost, 0) / ceaData.length;
+
+  if (!costData || !segments) {
+    return <PageState error={costError || segmentsError} label="the cost-effectiveness analysis" />;
+  }
 
   return (
     <div className="max-w-[1280px] mx-auto animate-fade-in space-y-5">

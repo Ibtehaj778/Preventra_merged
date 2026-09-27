@@ -3,9 +3,11 @@ import { ArrowLeft, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, Heart,
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { SegmentDot } from '../components/shared';
 import { SEGMENT_COLORS, SEGMENT_LABELS } from '../data/mockData';
-import { usePatient } from '../hooks/usePatient';
+import { usePatientRecord } from '../hooks/usePatient';
 import { useSurvival } from '../hooks/useSurvival';
 import { useRole } from '../context/RoleContext';
+import CareTeamCard from '../components/hospital/CareTeamCard';
+import ClinicalGate from '../components/hospital/ClinicalGate';
 
 // ── Plain-language interpretations keyed by driver label ──────────────────────
 const INTERPRETATIONS = {
@@ -138,9 +140,55 @@ function DriverCard({ rank, driver, direction, shap }) {
 export default function PatientDetail() {
   const { id }   = useParams();
   const navigate = useNavigate();
-  const { isCostView, isPatient } = useRole();
-  const { data: patientData, loading: patientLoading } = usePatient(id);
+  const { isCostView, isPatient, canAssign } = useRole();
+  const { summary, data: patientData, loading: patientLoading, reload } = usePatientRecord(id);
   const { data: survivalData } = useSurvival();
+
+  const backButton = !isPatient && (
+    <button onClick={() => navigate('/patients')}
+      className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 mb-4 transition-colors font-medium">
+      <ArrowLeft size={16} /> Back to patients
+    </button>
+  );
+
+  // Overview layer only, until a hospital admin or insurer gives a reason.
+  if (summary && !patientData && summary.detail_access === 'reason_required') {
+    const pct = Math.round(summary.dropout_prob * 100);
+    const color = getRiskColor(pct);
+    const isDropout = summary.prediction === 'Dropout Risk';
+    return (
+      <div className="patient-detail-page animate-fade-in space-y-6">
+        {backButton}
+        <div className="card p-6 md:p-8 flex flex-wrap items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-lg font-bold"
+                 style={{ background: 'var(--color-primary)' }}>#{summary.patient_idx}</div>
+            <h1 className="text-xl font-semibold text-gray-800" style={{ fontFamily: 'DM Serif Display, serif' }}>
+              Patient #{summary.patient_idx}
+            </h1>
+          </div>
+          <div className="flex items-center gap-5">
+            <div className="flex flex-col items-center">
+              <div className="w-20 h-20 rounded-full flex items-center justify-center"
+                   style={{ background: `${color}12`, border: `3px solid ${color}` }}>
+                <span className="text-2xl font-bold font-mono" style={{ color }}>{pct}%</span>
+              </div>
+              <span className="text-[10px] font-semibold uppercase tracking-wider mt-1.5" style={{ color }}>
+                {getRiskLabel(pct)} Risk
+              </span>
+            </div>
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl"
+                  style={{ background: isDropout ? '#FFEBEE' : '#E8F5E9', color: isDropout ? '#C62828' : '#2E7D32' }}>
+              {isDropout ? <AlertTriangle size={15} /> : <CheckCircle size={15} />}
+              {summary.prediction}
+            </span>
+          </div>
+        </div>
+        <CareTeamCard team={summary} patientIdx={summary.patient_idx} canAssign={summary.can_assign} onChanged={reload} />
+        <ClinicalGate patientIdx={summary.patient_idx} reasons={summary.reasons} onOpened={reload} />
+      </div>
+    );
+  }
 
   if (!patientData) {
     return (
@@ -151,8 +199,8 @@ export default function PatientDetail() {
   }
 
   const patient   = patientData.patient;
-  const survivalCurves = survivalData.curves;
-  const survivalCheckpoints = survivalData.checkpoints;
+  const survivalCurves = survivalData?.curves ?? [];
+  const survivalCheckpoints = survivalData?.checkpoints ?? [];
 
   const segColor = SEGMENT_COLORS[patient.cluster];
   const rec      = RECOMMENDATIONS[patient.driver_1] ?? RECOMMENDATIONS['Blood sugar control (HbA1c)'];
@@ -179,10 +227,7 @@ export default function PatientDetail() {
     <div className="patient-detail-page animate-fade-in">
 
       {/* ── Back button ──────────────────────────────────────────── */}
-      {!isPatient && <button onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 mb-4 transition-colors font-medium">
-        <ArrowLeft size={16} /> Back to Patient Risk Panel
-      </button>}
+      {backButton}
 
       {/* ── Finance-view context banner ──────────────────────────── */}
       {isCostView && (
@@ -248,6 +293,12 @@ export default function PatientDetail() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── Care team, insurer and pharmacy ──────────────────────── */}
+      <div className="mb-6">
+        <CareTeamCard team={patient} patientIdx={patient.patient_idx}
+          canAssign={canAssign && !isPatient} onChanged={reload} />
       </div>
 
       {/* ── Top 2-col grid: profile/financial/rec  |  drivers ──────── */}
@@ -342,6 +393,7 @@ export default function PatientDetail() {
       </div>
 
       {/* ── Full-width bottom row: Survival Curve | Dropout Checkpoints ── */}
+      {checkpoint && survivalCurves.length > 0 && (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
         {/* Survival Curve */}
@@ -413,6 +465,7 @@ export default function PatientDetail() {
         </div>
 
       </div>
+      )}
     </div>
   );
 }

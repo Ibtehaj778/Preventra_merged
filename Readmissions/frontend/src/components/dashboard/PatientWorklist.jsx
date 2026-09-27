@@ -4,8 +4,10 @@ import { getPatients, getPatientGroups } from '../../api';
 import ConditionFilter from './ConditionFilter';
 import RiskBadge from '../shared/RiskBadge';
 import TrendStatusBadge from '../shared/TrendStatusBadge';
+import CareTeamDialog from '../shared/CareTeamDialog';
+import { can, ASSIGN_ROLES } from '../../roles';
 import { ChevronRight, ChevronLeft, AlertCircle, ArrowUp, ArrowDown, ArrowDownUp,
-         Download } from 'lucide-react';
+         Download, Users } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // CSV export
@@ -29,7 +31,14 @@ const CSV_COLUMNS = [
   { key: 'group_label', label: 'Monitoring Group' },
   { key: 'primary_driver_label', label: 'Primary Driver' },
   { key: 'discharge_date', label: 'Discharge Date' },
+  { key: 'doctor', label: 'Doctor', get: (r) => r.doctor?.name || '' },
+  { key: 'nurses', label: 'Nurses', get: (r) => (r.nurses || []).map((n) => n.name).join('; ') },
+  { key: 'insurer', label: 'Insurer', get: (r) => r.insurer?.name || '' },
 ];
+// Left out of a hospital admin's or insurer's export, as the server leaves them
+// out of their rows: the clinical layer opens one patient at a time.
+const CLINICAL_CSV_KEYS = new Set(['primary_diagnosis', 'other_diagnoses', 'n_diagnoses_coded',
+  'conditions', 'group_label', 'primary_driver_label']);
 
 function escapeCsvField(value) {
   const str = String(value ?? '');
@@ -37,10 +46,11 @@ function escapeCsvField(value) {
   return str;
 }
 
-function downloadWorklistCsv(rows) {
-  const header = CSV_COLUMNS.map((c) => c.label).join(',');
+function downloadWorklistCsv(rows, redacted) {
+  const columns = CSV_COLUMNS.filter((c) => !redacted || !CLINICAL_CSV_KEYS.has(c.key));
+  const header = columns.map((c) => c.label).join(',');
   const lines = rows.map((row) =>
-    CSV_COLUMNS.map((c) => escapeCsvField(c.get ? c.get(row) : row[c.key])).join(','));
+    columns.map((c) => escapeCsvField(c.get ? c.get(row) : row[c.key])).join(','));
   const csv = [header, ...lines].join('\n');
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -158,6 +168,23 @@ function DeltaCell({ delta }) {
 }
 
 // ---------------------------------------------------------------------------
+// Care team
+// ---------------------------------------------------------------------------
+function CareTeamCell({ row }) {
+  const nurses = row.nurses || [];
+  return (
+    <div className="space-y-0.5 text-sm">
+      <div className={row.doctor ? 'text-gray-700' : 'text-risk-high'}>
+        {row.doctor ? row.doctor.name : 'No doctor'}
+      </div>
+      <div className="text-xs text-gray-400">
+        {nurses.length ? nurses.map((n) => n.name).join(', ') : 'No nurse'}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Skeleton
 // ---------------------------------------------------------------------------
 function WorklistSkeleton() {
@@ -182,7 +209,7 @@ function WorklistSkeleton() {
   );
 }
 
-export default function PatientWorklist({ onSelectPatient }) {
+export default function PatientWorklist({ onSelectPatient, refreshKey = 0 }) {
   const [patients, setPatients]   = useState([]);
   const [total, setTotal]         = useState(0);
   const [groups, setGroups]       = useState([]);
@@ -192,6 +219,13 @@ export default function PatientWorklist({ onSelectPatient }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 25;
+  // A hospital admin or insurer gets the overview layer only; the server says
+  // so on the response, and the diagnosis and driver columns go.
+  const [redacted, setRedacted] = useState(false);
+  const canAssign = can(ASSIGN_ROLES);
+  const [selected, setSelected] = useState([]);
+  const [assigning, setAssigning] = useState(null);       // patient ids in the dialog
+  const [reloadKey, setReloadKey] = useState(0);
 
   const sort = searchParams.get('sort') || 'score-desc';
 
@@ -219,25 +253,31 @@ export default function PatientWorklist({ onSelectPatient }) {
   const bandFilter   = searchParams.get('filter') || 'All';
   const trendFilter  = searchParams.get('trend')  || 'All';
   const search       = searchParams.get('search') || '';
+  // Care-team filters, from the Staff page's drill-down and the Overview.
+  const care = { doctor: searchParams.get('doctor') || '', nurse: searchParams.get('nurse') || '',
+                 unassigned: searchParams.get('unassigned') || '' };
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setSelected([]);
     getPatients({ group: groupFilter, match: matchMode, band: bandFilter,
-                  status: trendFilter, q: search, sort,
+                  status: trendFilter, q: search, sort, ...care,
                   page: currentPage, limit: rowsPerPage })
       .then((resp) => {
         if (cancelled) return;
         setPatients(resp?.data || []);
         setTotal(resp?.total ?? 0);
+        setRedacted(Boolean(resp?.redacted));
         setLoading(false);
       })
       .catch((err) => { if (!cancelled) { setError(err.message); setLoading(false); } });
     return () => { cancelled = true; };
     // groupFilter is a fresh array every render; keying the effect on its
     // joined form stops it refetching on every unrelated state change.
-  }, [groupFilter.join(','), matchMode, bandFilter, trendFilter, search, sort, currentPage]);
+  }, [groupFilter.join(','), matchMode, bandFilter, trendFilter, search, sort, currentPage, // eslint-disable-line react-hooks/exhaustive-deps
+      care.doctor, care.nurse, care.unassigned, reloadKey, refreshKey]);
 
   // The conditions actually present in this batch, with counts, so the filter
   // never offers an option that would return nothing.
@@ -251,7 +291,8 @@ export default function PatientWorklist({ onSelectPatient }) {
   // not already there, otherwise this fires a second, identical fetch.
   useEffect(() => {
     setCurrentPage((p) => (p === 1 ? p : 1));
-  }, [groupFilter.join(','), matchMode, bandFilter, trendFilter, search, sort]);
+  }, [groupFilter.join(','), matchMode, bandFilter, trendFilter, search, sort, // eslint-disable-line react-hooks/exhaustive-deps
+      care.doctor, care.nurse, care.unassigned]);
 
   // The server has already filtered, sorted and paged. What arrives IS the page.
   const paginatedData = patients;
@@ -264,8 +305,8 @@ export default function PatientWorklist({ onSelectPatient }) {
     try {
       const resp = await getPatients({ group: groupFilter, match: matchMode,
                                        band: bandFilter, status: trendFilter,
-                                       q: search, sort, page: 1, limit: 5000 });
-      downloadWorklistCsv(resp?.data || []);
+                                       q: search, sort, ...care, page: 1, limit: 5000 });
+      downloadWorklistCsv(resp?.data || [], Boolean(resp?.redacted));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -281,6 +322,19 @@ export default function PatientWorklist({ onSelectPatient }) {
     if (n === 'medium') return 'text-risk-medium';
     return 'text-risk-low';
   };
+
+  const pageIds = paginatedData.map((r) => r.id);
+  const allSelected = pageIds.length > 0 && pageIds.every((id) => selected.includes(id));
+  const toggleRow = (id) =>
+    setSelected((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const toggleAll = () => setSelected(allSelected ? [] : pageIds);
+  // The dialog offers the staff of the patients' hospital. A selection that
+  // spans hospitals (only possible for the superadmin viewing every hospital)
+  // is refused by the server, so the dialog gets no hospital to filter on.
+  const selectionHospital = (() => {
+    const hs = new Set(paginatedData.filter((r) => selected.includes(r.id)).map((r) => r.hospital_id));
+    return hs.size === 1 ? [...hs][0] : undefined;
+  })();
 
   const SortHeader = ({ label, column }) => {
     const isSorted = sort.startsWith(column);
@@ -321,7 +375,14 @@ export default function PatientWorklist({ onSelectPatient }) {
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden">
       <div className="px-6 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
         {/* Filter by condition. Server-side, because it has to be evaluated
-            against the whole cohort rather than the rows already loaded. */}
+            against the whole cohort rather than the rows already loaded. Not
+            offered to the roles that see the overview layer only - the server
+            would ignore it for them. */}
+        {redacted ? (
+          <p className="text-sm text-gray-500">
+            Diagnoses and risk drivers open per patient, with a reason.
+          </p>
+        ) : (
         <ConditionFilter
           groups={groups}
           selected={groupFilter}
@@ -335,6 +396,18 @@ export default function PatientWorklist({ onSelectPatient }) {
             setSearchParams(next);
           }}
         />
+        )}
+        <div className="flex items-center gap-2">
+        {canAssign && selected.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAssigning(selected)}
+            className="flex items-center space-x-2 px-3 py-1.5 text-sm font-semibold text-white bg-ns-navy rounded-lg hover:bg-blue-900 transition-colors"
+          >
+            <Users size={16} />
+            <span>Assign care team ({selected.length})</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={handleExport}
@@ -344,6 +417,7 @@ export default function PatientWorklist({ onSelectPatient }) {
           <Download size={16} />
           <span>{exporting ? 'Preparing…' : `Export CSV${total ? ` (${total.toLocaleString()})` : ''}`}</span>
         </button>
+        </div>
       </div>
       {/* Below `md` the same rows render as cards. Eight columns is 1,671px of
           table, which on a phone means swiping sideways five times to read one
@@ -378,13 +452,18 @@ export default function PatientWorklist({ onSelectPatient }) {
               </div>
 
               <div className="mt-2 text-sm font-semibold text-gray-800">{row.id}</div>
-              <div className="mt-1 text-sm text-gray-700">
-                <DiagnosisCell row={row} highlight={groupFilter} />
-              </div>
+              {!redacted && (
+                <div className="mt-1 text-sm text-gray-700">
+                  <DiagnosisCell row={row} highlight={groupFilter} />
+                </div>
+              )}
               {row.primary_driver_label && (
                 <div className="mt-1 text-xs text-gray-600">{row.primary_driver_label}</div>
               )}
-              <div className="mt-1 text-xs text-gray-400">Discharged {row.discharge_date}</div>
+              <div className="mt-2"><CareTeamCell row={row} /></div>
+              <div className="mt-1 text-xs text-gray-400">
+                Discharged {row.discharge_date}{row.insurer ? ` · ${row.insurer.name}` : ''}
+              </div>
             </button>
           ))
         ) : (
@@ -398,16 +477,24 @@ export default function PatientWorklist({ onSelectPatient }) {
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 font-medium">
             <tr>
+              {canAssign && (
+                <th className="pl-6 pr-2 py-4 w-8">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    aria-label="Select every patient on this page" className="accent-ns-navy" />
+                </th>
+              )}
               <SortHeader label="Current Risk" column="score" />
               <SortHeader label="Since Discharge" column="delta" />
               <SortHeader label="Trend" column="trend" />
               <SortHeader label="Risk Band" column="band" />
               <SortHeader label="Patient ID" column="id" />
-              <SortHeader label="Diagnoses" column="diagnosis" />
+              <th className="px-6 py-4">Care Team</th>
+              {!redacted && <SortHeader label="Diagnoses" column="diagnosis" />}
               {/* Not "Primary": the column now shows one of the patient's top
                   three drivers, not necessarily the highest-ranked one. */}
-              <SortHeader label="Key Risk Driver" column="driver" />
+              {!redacted && <SortHeader label="Key Risk Driver" column="driver" />}
               <SortHeader label="Discharge Date" column="date" />
+              <th className="px-6 py-4">Insurer</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -418,6 +505,13 @@ export default function PatientWorklist({ onSelectPatient }) {
                   onClick={() => onSelectPatient(row.id)}
                   className="hover:bg-blue-50/50 cursor-pointer transition-colors group"
                 >
+                  {canAssign && (
+                    <td className="pl-6 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.includes(row.id)}
+                        onChange={() => toggleRow(row.id)} aria-label={`Select ${row.id}`}
+                        className="accent-ns-navy" />
+                    </td>
+                  )}
                   <td className="px-6 py-3">
                     <span className={`text-xl font-bold ${getScoreColor(row.risk_band)}`}>
                       {parseFloat(row.risk_score).toFixed(1)}%
@@ -443,16 +537,22 @@ export default function PatientWorklist({ onSelectPatient }) {
                     <RiskBadge riskBand={row.risk_band} size="sm" />
                   </td>
                   <td className="px-6 py-3 font-semibold text-gray-800">{row.id}</td>
-                  <td className="px-6 py-3 max-w-sm text-gray-700">
-                    <DiagnosisCell row={row} highlight={groupFilter} />
-                  </td>
-                  <td className="px-6 py-3 max-w-xs truncate text-gray-600">{row.primary_driver_label}</td>
+                  <td className="px-6 py-3"><CareTeamCell row={row} /></td>
+                  {!redacted && (
+                    <td className="px-6 py-3 max-w-sm text-gray-700">
+                      <DiagnosisCell row={row} highlight={groupFilter} />
+                    </td>
+                  )}
+                  {!redacted && (
+                    <td className="px-6 py-3 max-w-xs truncate text-gray-600">{row.primary_driver_label}</td>
+                  )}
                   <td className="px-6 py-3 text-gray-500">{row.discharge_date}</td>
+                  <td className="px-6 py-3 text-gray-500">{row.insurer?.name || '—'}</td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={(redacted ? 8 : 10) + (canAssign ? 1 : 0)} className="px-6 py-12 text-center text-gray-500">
                   No patients match the current filters.
                 </td>
               </tr>
@@ -489,6 +589,18 @@ export default function PatientWorklist({ onSelectPatient }) {
             </button>
           </div>
         </div>
+      )}
+      {assigning && (
+        <CareTeamDialog
+          patientIds={assigning}
+          hospitalId={selectionHospital}
+          current={assigning.length === 1 ? (() => {
+            const row = paginatedData.find((r) => r.id === assigning[0]);
+            return { doctorId: row?.doctor?.id || '', nurseIds: (row?.nurses || []).map((n) => n.id) };
+          })() : undefined}
+          onClose={() => setAssigning(null)}
+          onSaved={() => { setAssigning(null); setReloadKey((k) => k + 1); }}
+        />
       )}
     </div>
   );

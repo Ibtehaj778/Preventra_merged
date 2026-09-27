@@ -9,6 +9,8 @@ import {
   getRecommendedActions, acknowledgeClinicalAlert, respondToClinicalAlert,
   dismissClinicalAlert, getUnroutedAlerts, startForecastScan, getForecastScan,
 } from '../api';
+import { readClaims } from '../api/auth';
+import { can, REGISTRY_ROLES } from '../roles';
 
 // Which doctor the console is acting as. Persisted so a refresh does not send
 // the user back to the picker, and namespaced so it cannot collide with
@@ -27,7 +29,7 @@ export default function DoctorConsole() {
   const [doctors, setDoctors] = useState([]);
   const [groups, setGroups] = useState([]);
   const [specialties, setSpecialties] = useState([]);
-  const [doctorId, setDoctorId] = useState(() => localStorage.getItem(IDENTITY_KEY) || '');
+  const [pickedId, setPickedId] = useState(() => localStorage.getItem(IDENTITY_KEY) || '');
   const [alerts, setAlerts] = useState([]);
   const [counts, setCounts] = useState(null);
   const [unrouted, setUnrouted] = useState([]);
@@ -42,6 +44,19 @@ export default function DoctorConsole() {
   // picker are both useless - showing them empty invites the user to fill in a
   // form that cannot succeed.
   const [directoryDown, setDirectoryDown] = useState('');
+
+  // A signed-in doctor opens their own inbox - their registry entry, matched by
+  // email the same way the backend matches it (api/access.py). Only the
+  // superadmin and case managers choose whose inbox to look at.
+  const me = readClaims();
+  const isDoctor = me?.role === 'doctor';
+  const mine = useMemo(
+    () => (isDoctor ? doctors.find((d) => (d.email || '').toLowerCase() === (me?.email || '').toLowerCase()) : null),
+    [doctors, isDoctor, me?.email],
+  );
+  const doctorId = isDoctor ? (mine?.doctor_id || '') : pickedId;
+  const canRegister = can(REGISTRY_ROLES);
+  const canSweep = me?.role === 'superadmin';
 
   const doctor = useMemo(
     () => doctors.find((d) => d.doctor_id === doctorId) || null,
@@ -116,7 +131,7 @@ export default function DoctorConsole() {
   }, [scan?.id, scan?.status, loadInbox]);
 
   const chooseDoctor = (id) => {
-    setDoctorId(id);
+    setPickedId(id);
     if (id) localStorage.setItem(IDENTITY_KEY, id);
     else localStorage.removeItem(IDENTITY_KEY);
   };
@@ -144,6 +159,7 @@ export default function DoctorConsole() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {canSweep && (
           <button
             onClick={runScan}
             disabled={scan?.status === 'Running'}
@@ -154,6 +170,8 @@ export default function DoctorConsole() {
               : <RefreshCw size={15} />}
             Run forecast sweep
           </button>
+          )}
+          {canRegister && (
           <button
             onClick={() => setShowRegister((v) => !v)}
             disabled={!!directoryDown}
@@ -162,19 +180,21 @@ export default function DoctorConsole() {
           >
             <UserPlus size={15} /> Register clinician
           </button>
+          )}
         </div>
       </header>
 
-      {/* Identity is a directory pick, not a login. Saying so on screen beats
-          letting a reviewer discover it. */}
-      <div className="bg-amber-50 border border-amber-200 rounded-md px-4 py-2.5 text-xs text-amber-900 flex items-start gap-2">
-        <ShieldAlert size={14} className="shrink-0 mt-0.5" />
-        <span>
-          Sign-in is disabled in this build, so selecting a clinician below identifies
-          you but does not authenticate you. Every action is recorded against the
-          selected doctor.
-        </span>
-      </div>
+      {/* Anyone but the doctor themselves is looking at someone else's inbox.
+          Saying so on screen beats letting a reviewer discover it. */}
+      {!isDoctor && (
+        <div className="bg-amber-50 border border-amber-200 rounded-md px-4 py-2.5 text-xs text-amber-900 flex items-start gap-2">
+          <ShieldAlert size={14} className="shrink-0 mt-0.5" />
+          <span>
+            You are viewing a clinician&apos;s inbox. Anything you acknowledge or answer
+            here is recorded against the selected doctor.
+          </span>
+        </div>
+      )}
 
       {directoryDown && (
         <div className="bg-red-50 border border-red-200 text-red-800 rounded-md px-4 py-3 text-sm">
@@ -195,13 +215,19 @@ export default function DoctorConsole() {
 
       <section className="bg-white rounded-lg border border-gray-200 p-4">
         <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Viewing as
+          {isDoctor ? 'Your inbox' : 'Viewing as'}
         </label>
+        {!isDoctor && (
         <p className="text-xs text-gray-500 mt-0.5 mb-2">
-          Each alert is addressed to one clinician. Choose whose inbox to open —
-          this selects an identity, it does not log you in.
+          Each alert is addressed to one clinician. Choose whose inbox to open.
         </p>
+        )}
         <div className="flex items-center gap-3 flex-wrap">
+          {isDoctor ? (
+            <span className="text-sm font-medium text-gray-800 py-2">
+              {mine ? `${mine.name} — ${mine.specialty}` : 'You are not registered for alerts yet'}
+            </span>
+          ) : (
           <select
             value={doctorId}
             onChange={(e) => chooseDoctor(e.target.value)}
@@ -217,6 +243,7 @@ export default function DoctorConsole() {
               </option>
             ))}
           </select>
+          )}
           {counts && (
             <div className="flex items-center gap-2 text-sm">
               <Pill tone="bg-gray-100 text-gray-700" label={`${counts.open} open`} />
@@ -254,8 +281,10 @@ export default function DoctorConsole() {
       {!doctorId ? (
         <EmptyState
           icon={<Stethoscope size={32} />}
-          title="Select a clinician to open their inbox"
-          body={doctors.length === 0
+          title={isDoctor ? 'Your account is not in the alert registry' : 'Select a clinician to open their inbox'}
+          body={isDoctor
+            ? 'Alerts are routed to registered clinicians. Ask your hospital admin to register you on the Staff page.'
+            : doctors.length === 0
             ? 'No clinicians are registered yet. Use “Register clinician” above — name, specialty and email is all it takes.'
             : 'Alerts are routed by the patient’s condition to whoever covers it.'}
         />
@@ -267,7 +296,8 @@ export default function DoctorConsole() {
         <EmptyState
           icon={<Inbox size={32} />}
           title="Nothing needs your attention"
-          body="Alerts appear here when a patient’s forecast reaches high or critical. Run a forecast sweep to check the cohort now."
+          body={`Alerts appear here when a patient’s forecast reaches high or critical.${
+            canSweep ? ' Run a forecast sweep to check the cohort now.' : ''}`}
         />
       ) : (
         <ul className="space-y-4">

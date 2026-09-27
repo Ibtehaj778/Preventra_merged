@@ -19,8 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from core import chatbot_tools, llm
 from core.config import settings
-from core.security import current_user
-from core.access import patient_scope
+from core.access import actor, patient_scope
 from schemas.chatbot import ChatRequest, ChatResponse, ToolCallLog
 
 logger = logging.getLogger("chatbot.router")
@@ -76,7 +75,7 @@ def _trim(messages: list[dict]) -> list[dict]:
 
 
 @router.post("/message", response_model=ChatResponse)
-async def post_message(req: ChatRequest, user: dict = Depends(current_user)) -> ChatResponse:
+async def post_message(req: ChatRequest, user: dict = Depends(actor)) -> ChatResponse:
     if not settings.chatbot_enabled:
         raise HTTPException(status_code=503, detail="Chatbot is disabled.")
 
@@ -171,7 +170,7 @@ async def post_message(req: ChatRequest, user: dict = Depends(current_user)) -> 
 
 
 @router.get("/session/{session_id}")
-async def get_session(session_id: str, user: dict = Depends(current_user)) -> dict:
+async def get_session(session_id: str, user: dict = Depends(actor)) -> dict:
     session = _SESSIONS.get(session_id)
     if session is None or session.get("owner") != user["id"]:
         raise HTTPException(status_code=404, detail="Session not found.")
@@ -182,7 +181,7 @@ async def get_session(session_id: str, user: dict = Depends(current_user)) -> di
 
 
 @router.delete("/session/{session_id}")
-async def clear_session(session_id: str, user: dict = Depends(current_user)) -> dict:
+async def clear_session(session_id: str, user: dict = Depends(actor)) -> dict:
     session = _SESSIONS.get(session_id)
     existed = session is not None and session.get("owner") == user["id"]
     if existed:

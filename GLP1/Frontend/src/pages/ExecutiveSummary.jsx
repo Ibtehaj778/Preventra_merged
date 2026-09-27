@@ -138,13 +138,13 @@ function PopulationBar({ totalN, segmentCards }) {
 // insurers and the superadmin - doctors and nurses start on their patient list.
 // Cost figures only for the roles that own the budget.
 export default function ExecutiveSummary() {
-  const { isCostView } = useRole();
+  const { isCostView, isSuperadmin } = useRole();
   const { data: summaryData, error: summaryError } = useSummary();
 
   if (!summaryData) {
     return (
       <div className="exec-summary-page">
-        <HospitalStrip />
+        {!isSuperadmin && <HospitalStrip />}
         <PageState error={summaryError} label="the summary" />
       </div>
     );
@@ -167,7 +167,7 @@ export default function ExecutiveSummary() {
 
   return (
     <div className="exec-summary-page">
-      <HospitalStrip />
+      {!isSuperadmin && <HospitalStrip />}
 
       {isCostView && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium animate-fade-up"

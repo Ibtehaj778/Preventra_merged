@@ -375,6 +375,14 @@ person" approves them instead of creating a second account.
 | `claims@medicare.test`, `claims@medicaid.test`, `claims@private.test`, `claims@other.test` | Insurers |
 | `patient1@…`, `patient2@…` | Patients, each linked to one record |
 
+- `demo_patient_logins.py --hospital "<name>"` puts **every** Readmissions patient
+  in that hospital (moving any from another hospital, with that hospital's doctor
+  and nurses taken off them and this hospital's given instead), and makes
+  `patient1@…` to `patient20@…`, each linked to one current patient: high,
+  medium and low risk in turn, across conditions. They sign in to Readmissions
+  only and land on their own record. All of them, including the two above, get
+  the password typed when it runs. `--dry-run` shows the list first.
+
 Demo accounts share one known password. Change it, or remove them, before anyone
 outside the team gets a link — real MIMIC data sits behind them.
 
@@ -396,7 +404,7 @@ outside the team gets a link — real MIMIC data sits behind them.
 | Readmissions pages | `Readmissions/frontend/src/pages/Overview.jsx`, `Patients.jsx`, `Staff.jsx`, `PatientDetail.jsx` |
 | GLP-1 pages | `GLP1/Frontend/src/pages/ExecutiveSummary.jsx` (Overview), `PatientRiskPanel.jsx` (Patients), `Staff.jsx`, `PatientDetail.jsx` |
 | Which menu items each role gets | `Readmissions/frontend/src/roles.js`, `GLP1/Frontend/src/context/RoleContext.jsx` |
-| Operator scripts | `Readmissions/scripts/create_superadmin.py`, `migrate_user_roles.py`, `seed_hospital.py` |
+| Operator scripts | `Readmissions/scripts/create_superadmin.py`, `migrate_user_roles.py`, `seed_hospital.py`, `demo_patient_logins.py` |
 | Tests for all of the above | `Readmissions/tests/units/test_auth.py`, `test_user_admin.py`, `test_isolation.py`, `test_hospital_pages.py`; `GLP1/Backend/tests/test_isolation.py`, `test_hospital_pages.py` |
 
 ---

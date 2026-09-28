@@ -76,12 +76,20 @@ export default function Staff() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                  {data.no_doctor > 0 ? (
           <Link to="/patients?unassigned=doctor" className="px-3 py-1.5 rounded-full" style={{ background: '#FFF3E0', color: '#EF6C00' }}>
-            {data.no_doctor.toLocaleString()} with no doctor
+            {data.no_doctor.toLocaleString()} patients without a doctor
           </Link>
+        ) : (
+          <span className="px-3 py-1.5 rounded-full" style={{ background: '#E8F5E9', color: '#2E7D32' }}>Every patient has a doctor</span>
+        )}
+        {data.no_nurse > 0 ? (
           <Link to="/patients?unassigned=nurse" className="px-3 py-1.5 rounded-full" style={{ background: '#FFF3E0', color: '#EF6C00' }}>
-            {data.no_nurse.toLocaleString()} with no nurse
+            {data.no_nurse.toLocaleString()} patients without a nurse
           </Link>
+        ) : (
+          <span className="px-3 py-1.5 rounded-full" style={{ background: '#E8F5E9', color: '#2E7D32' }}>Every patient has a nurse</span>
+        )}
         </div>
       </div>
 

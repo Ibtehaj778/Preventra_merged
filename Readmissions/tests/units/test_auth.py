@@ -297,7 +297,7 @@ def test_public_view_never_exposes_the_hash(db):
     view = auth.public_view(auth.users(db).find_one({"email": "a@b.com"}))
     assert "password_hash" not in view
     assert set(view) == {"sub", "email", "role", "status", "hospital_id",
-                         "must_change_password", "app_access"}
+                         "must_change_password", "app_access", "requested_hospital_id"}
 
 
 def test_auth_config_reports_state_without_leaking_the_secret():

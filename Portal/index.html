@@ -346,10 +346,18 @@
           <option value="patient">Patient</option>
         </select>
         <p class="role-hint" id="role-hint"></p>
+        <!-- Only for the roles that work for a hospital. Choosing one files the
+             request with that hospital's administrator; it does not join it. -->
+        <div id="hospital-field" class="hidden">
+          <label for="signup-hospital">Your hospital</label>
+          <select id="signup-hospital" name="hospital_id">
+            <option value="">Choose your hospital…</option>
+          </select>
+          <p class="role-hint" id="hospital-hint"></p>
+        </div>
         <p class="sub">
-          New accounts wait for an administrator to approve them. They confirm
-          your role and assign your hospital; until then you can sign in but
-          see no patient data.
+          New accounts wait to be approved. Until then you can sign in but see
+          no patient data.
         </p>
       </div>
 
@@ -374,9 +382,8 @@
     <h1>Your account is waiting for approval</h1>
     <p class="sub">
       <span id="pending-role"></span>
-      An administrator needs to approve it, confirm your role and assign your
-      hospital. You can close this page; once you are approved, signing in
-      takes you straight to your applications.
+      You can close this page; once you are approved, signing in takes you
+      straight to your applications.
     </p>
     <button type="button" id="check-again">Check again</button>
   </main>
@@ -531,10 +538,72 @@
       $('apps-view').classList.remove('hidden');
     }
 
+    // The roles that belong to a hospital, and so pick one at sign-up. The
+    // same list as HOSPITAL_ROLES in Readmissions/api/auth.py.
+    const HOSPITAL_ROLES = ['doctor', 'nurse', 'case_manager', 'hospital_admin', 'patient'];
+
+    /** Hospitals a sign-up may ask to join: names and ids, from an open
+     *  endpoint. Fetched once; a failure is retried next time. */
+    let hospitalsPromise = null;
+    function loadHospitals() {
+      if (!hospitalsPromise) {
+        hospitalsPromise = fetch(`${CONFIG.AUTH_BASE_URL.replace(/\/$/, '')}/auth/hospitals`)
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+          .catch(() => { hospitalsPromise = null; return []; });
+      }
+      return hospitalsPromise;
+    }
+
+    async function fillHospitals() {
+      const select = $('signup-hospital');
+      if (select.dataset.filled) return;
+      const list = await loadHospitals();
+      if (!list.length) return;                  // try again next time the form opens
+      for (const h of list) select.add(new Option(h.name, h.id));
+      select.add(new Option('My hospital isn\'t listed', 'none'));
+      select.dataset.filled = '1';
+    }
+
+    /** Shows the hospital choice for hospital roles, and says who decides. */
+    function updateSignupFields() {
+      const role = $('signup-role').value;
+      $('role-hint').textContent = ROLE_HINTS[role] || '';
+      const needsHospital = MODE === 'signup' && HOSPITAL_ROLES.includes(role);
+      $('hospital-field').classList.toggle('hidden', !needsHospital);
+      $('signup-hospital').required = needsHospital;
+      $('hospital-hint').textContent = !needsHospital ? ''
+        : role === 'hospital_admin'
+          ? 'Our team reviews requests to become a hospital administrator.'
+          : 'That hospital\'s administrator reviews your request.';
+      if (needsHospital) fillHospitals();
+    }
+
+    /** "You asked to join Demo Hospital as a doctor" - read back from the
+     *  account, since the token does not carry the requested hospital. */
+    async function describeRequest(claims) {
+      const role = ROLE_LABELS[claims.role] || claims.role || '';
+      let hospitalName = '';
+      try {
+        const me = await fetch(`${CONFIG.AUTH_BASE_URL.replace(/\/$/, '')}/auth/me`, {
+          headers: { Authorization: `Bearer ${store.get(TOKEN_KEY)}` },
+        }).then((r) => (r.ok ? r.json() : null));
+        const id = me && me.requested_hospital_id;
+        if (id) hospitalName = ((await loadHospitals()).find((h) => h.id === id) || {}).name || id;
+      } catch { /* the generic wording below still holds */ }
+      if (hospitalName && claims.role === 'hospital_admin') {
+        return `You asked to be an administrator of ${hospitalName}. Our team reviews these requests.`;
+      }
+      if (hospitalName) {
+        return `You asked to join ${hospitalName} as: ${role}. Its administrator will review your request.`;
+      }
+      return role ? `You asked to join as: ${role}. Our team will place you in your hospital.` : '';
+    }
+
     function renderPending(claims) {
       $('pending-email').textContent = claims.email || '—';
       $('pending-role').textContent = claims.role
         ? `You asked to join as: ${ROLE_LABELS[claims.role] || claims.role}.` : '';
+      describeRequest(claims).then((text) => { if (text) $('pending-role').textContent = text; });
       $('login-view').classList.add('hidden');
       $('apps-view').classList.add('hidden');
       $('password-view').classList.add('hidden');
@@ -616,7 +685,10 @@
       try {
         const path = MODE === 'signup' ? '/auth/signup' : '/auth/login';
         const payload = { email: $('email').value, password: $('password').value };
-        if (MODE === 'signup') payload.role = $('signup-role').value;
+        if (MODE === 'signup') {
+          payload.role = $('signup-role').value;
+          if (HOSPITAL_ROLES.includes(payload.role)) payload.hospital_id = $('signup-hospital').value;
+        }
         lastPassword = payload.password;
 
         const response = await fetch(`${CONFIG.AUTH_BASE_URL.replace(/\/$/, '')}${path}`, {
@@ -666,6 +738,7 @@
       $('login-button').textContent = up ? 'Create account' : 'Sign in';
       $('signup-fields').classList.toggle('hidden', !up);
       $('signup-role').required = up;
+      updateSignupFields();
       $('password').setAttribute('autocomplete', up ? 'new-password' : 'current-password');
       $('switch-text').textContent = up ? 'Already have an account?' : 'No account yet?';
       $('switch-mode').textContent = up ? 'Sign in' : 'Create one';
@@ -675,8 +748,7 @@
     $('switch-mode').addEventListener('click',
       () => setMode(MODE === 'login' ? 'signup' : 'login'));
 
-    $('signup-role').addEventListener('change',
-      () => { $('role-hint').textContent = ROLE_HINTS[$('signup-role').value] || ''; });
+    $('signup-role').addEventListener('change', updateSignupFields);
 
     $('sign-out').addEventListener('click', signOut);
     $('pending-sign-out').addEventListener('click', signOut);

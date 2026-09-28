@@ -83,18 +83,35 @@ def test_the_login_endpoints_stay_open(main, db):
                                             "password": "correct-horse"}).status_code == 200
 
 
-def test_signup_files_the_requested_role_but_never_a_hospital(main, db):
-    """The role is a request an admin confirms; a hospital sent by the client
-    is ignored, so typing a hospital's name never places anyone in it."""
+def test_signup_files_a_request_but_places_nobody_in_a_hospital(main, db):
+    """Role and hospital are a request that hospital's admin decides on; until
+    then the account is in no hospital and sees nothing."""
+    db.client["shared_identity"]["hospitals"].insert_one({"_id": "city-hospital", "name": "City Hospital"})
     client = TestClient(main.app)
     r = client.post("/auth/signup", json={"email": "doc@test.com", "password": "correct-horse",
-                                          "role": "doctor", "org_name": "City Hospital",
-                                          "hospital_id": "city-hospital"})
-    assert (r.json()["user"]["role"], r.json()["user"]["status"]) == ("doctor", "pending")
-    assert r.json()["user"]["hospital_id"] is None
+                                          "role": "doctor", "hospital_id": "city-hospital"})
+    user = r.json()["user"]
+    assert (user["role"], user["status"], user["hospital_id"]) == ("doctor", "pending", None)
+    assert user["requested_hospital_id"] == "city-hospital"
     token = r.json()["token"]
     assert TestClient(main.app).get("/api/patients", headers={"Authorization": f"Bearer {token}"}
                                     ).status_code == 403
+
+
+def test_signup_refuses_a_hospital_that_does_not_exist(main, db):
+    r = TestClient(main.app).post("/auth/signup", json={
+        "email": "doc@test.com", "password": "correct-horse", "role": "doctor",
+        "hospital_id": "made-up-hospital"})
+    assert r.status_code == 422
+    assert auth.users(db).count_documents({}) == 0
+
+
+def test_the_hospital_list_for_sign_up_is_open_and_names_only(main, db):
+    db.client["shared_identity"]["hospitals"].insert_one(
+        {"_id": "city-hospital", "name": "City Hospital", "created_by": "ops@team.com"})
+    r = TestClient(main.app).get("/auth/hospitals")
+    assert r.status_code == 200
+    assert r.json() == [{"id": "city-hospital", "name": "City Hospital"}]
 
 
 def test_signup_cannot_ask_to_be_a_superadmin(main, db):

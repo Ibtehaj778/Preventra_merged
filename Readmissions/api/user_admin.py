@@ -14,13 +14,18 @@ No path here can create a superadmin or promote anyone to one; that is
 scripts/create_superadmin.py, run by someone with direct cluster access.
 
 Approving a self-signup: a sign-up names the role it is asking for (see
-auth.SIGNUP_ROLES) but no hospital, and waits as pending. The superadmin sees
-every pending account, filterable by that requested role, and approves it with
-a hospital or insurer - keeping the role or changing it. A hospital admin
-approves by adding the person's email: if it is a pending account not yet
-attached anywhere, it is attached and activated with the role the admin picks,
-instead of being refused as a duplicate. So hospital admins approve their own
-people without ever seeing a list of other hospitals' sign-ups.
+auth.SIGNUP_ROLES) and, for a hospital role, the hospital it wants to join.
+It waits as pending, attached to nothing, until someone approves it:
+
+    hospital admin  sees the requests for its own hospital - for the roles it
+                    may hand out - and approves (keeping or changing the role)
+                    or declines them. It never sees another hospital's requests.
+                    It can also approve by adding the person's email, as before.
+    superadmin      sees every request, with the requested hospital already
+                    filled in, and can approve or decline any of them.
+
+A request to be a hospital admin only ever reaches the superadmin: one
+hospital admin cannot make another.
 """
 from __future__ import annotations
 
@@ -89,8 +94,10 @@ def admin_view(account: dict) -> dict:
     return {**auth.public_view(account),
             "name": account.get("name", ""),
             "insurer_id": account.get("insurer_id"),
-            # What a self-signup asked to be; None for accounts an admin created.
+            # What a self-signup asked for; None for accounts an admin created.
             "requested_role": account.get("requested_role"),
+            "requested_hospital_id": account.get("requested_hospital_id"),
+            "declined": account.get("declined"),
             "must_change_password": bool(account.get("must_change_password")),
             "created_at": account.get("created_at", "")}
 
@@ -173,10 +180,28 @@ def _load_target(db, actor: dict, user_id: str) -> dict:
     return target
 
 
+def _is_unattached_signup(target: dict) -> bool:
+    """A self-signup nobody has approved yet: pending, in no hospital or insurer.
+    (A suspended account is pending too, but keeps its hospital.)"""
+    return (target["status"] == "pending" and not target.get("hospital_id")
+            and not target.get("insurer_id"))
+
+
+def _is_request_for(actor: dict, target: dict) -> bool:
+    """A sign-up asking to join this hospital admin's hospital, in a role the
+    admin may hand out - so, never a request to be a hospital admin."""
+    return (actor["role"] == "hospital_admin" and _is_unattached_signup(target)
+            and bool(actor.get("hospital_id"))
+            and target.get("requested_hospital_id") == actor["hospital_id"]
+            and target["role"] in ASSIGNABLE["hospital_admin"])
+
+
 def _may_manage(actor: dict, target: dict) -> bool:
     if target["role"] == "superadmin" or str(target["_id"]) == str(actor["_id"]):
         return False                       # no one edits a superadmin, or themselves
     if actor["role"] == "superadmin":
+        return True
+    if _is_request_for(actor, target):
         return True
     return (target["hospital_id"] == actor["hospital_id"]
             and target["role"] in ASSIGNABLE["hospital_admin"])
@@ -188,7 +213,13 @@ def list_users(db, actor: dict, hospital_id: Optional[str] = None,
     require_manager(actor)
     query: dict = {}
     if actor["role"] == "hospital_admin":
-        query["hospital_id"] = actor["hospital_id"]
+        # Its own staff and patients, plus the sign-ups asking to join it.
+        query["$or"] = [
+            {"hospital_id": actor["hospital_id"]},
+            {"status": "pending", "hospital_id": None, "insurer_id": None,
+             "requested_hospital_id": actor["hospital_id"] or "__none__",
+             "role": {"$in": list(ASSIGNABLE["hospital_admin"])}},
+        ]
     elif hospital_id:
         query["hospital_id"] = hospital_id
     if status:
@@ -217,10 +248,12 @@ def create_user(db, actor: dict, email: str, role: str, name: str = "",
     existing = auth.users(db).find_one({"email": email})
     if existing:
         current = auth.effective(existing)
-        unattached_signup = (current["status"] == "pending" and not current["hospital_id"]
-                             and not existing.get("insurer_id"))
-        if not unattached_signup:
+        if not _is_unattached_signup(current):
             raise HTTPException(status_code=409, detail="An account with that email already exists")
+        wanted = existing.get("requested_hospital_id")
+        if actor["role"] == "hospital_admin" and wanted and wanted != actor["hospital_id"]:
+            raise HTTPException(status_code=409,
+                                detail="This person asked to join another hospital")
         auth.users(db).update_one({"_id": existing["_id"]},
                                   {"$set": {**fields, "approved_by": actor["email"]}})
         return {"user": admin_view({**existing, **fields}), "temporary_password": None,
@@ -255,8 +288,12 @@ def update_user(db, actor: dict, user_id: str, role: Optional[str] = None,
     if status is not None and status not in auth.STATUSES:
         raise HTTPException(status_code=422, detail=f"Status must be one of {list(auth.STATUSES)}")
 
-    place = _placement(db, actor, new_role,
-                       hospital_id if hospital_id is not None else current["hospital_id"],
+    # Approving a sign-up without naming a hospital puts it where it asked to go.
+    if hospital_id is None:
+        hospital_id = current["hospital_id"]
+        if not hospital_id and _is_unattached_signup(current):
+            hospital_id = target.get("requested_hospital_id")
+    place = _placement(db, actor, new_role, hospital_id,
                        insurer_id if insurer_id is not None else target.get("insurer_id"))
     fields = {"role": new_role, "status": status or current["status"], **place,
               "updated_at": auth._now()}
@@ -264,6 +301,31 @@ def update_user(db, actor: dict, user_id: str, role: Optional[str] = None,
         fields["name"] = name.strip()
     auth.users(db).update_one({"_id": target["_id"]}, {"$set": fields})
     return admin_view({**target, **fields})
+
+
+def decline_signup(db, actor: dict, user_id: str) -> dict:
+    """Turn down a sign-up's request to join a hospital.
+
+    The account stays pending and sees nothing; it just leaves that hospital's
+    list. The superadmin still sees it and can place it elsewhere. Who declined,
+    and which hospital, is kept on the account."""
+    require_manager(actor)
+    target = _load_target(db, actor, user_id)
+    current = auth.effective(target)
+    if not _is_unattached_signup(current) or not target.get("requested_hospital_id"):
+        raise HTTPException(status_code=409, detail="There is no pending request to decline")
+    declined = {"hospital_id": target["requested_hospital_id"], "by": actor["email"],
+                "at": auth._now()}
+    fields = {"requested_hospital_id": None, "declined": declined, "updated_at": auth._now()}
+    auth.users(db).update_one({"_id": target["_id"]}, {"$set": fields})
+    return admin_view({**target, **fields})
+
+
+def list_public_hospitals(db) -> list:
+    """The hospitals someone signing up may ask to join: names and ids only,
+    for the portal's sign-up form. Nothing else about them leaves here."""
+    return [{"id": h["_id"], "name": h["name"]}
+            for h in hospitals(db).find({}, {"name": 1}).sort("name", 1)]
 
 
 def import_users(db, actor: dict, csv_text: str, hospital_id: Optional[str] = None,

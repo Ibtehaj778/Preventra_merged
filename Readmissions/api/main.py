@@ -147,9 +147,10 @@ def healthz():
 class SignupRequest(BaseModel):
     email: str
     password: str
-    # The role they are asking for - a request, confirmed by an admin on
-    # approval. See auth.SIGNUP_ROLES.
+    # The role, and for a hospital role the hospital, they are asking for - a
+    # request that hospital's admin approves or declines. See auth.signup.
     role: Optional[str] = None
+    hospital_id: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -159,11 +160,19 @@ class LoginRequest(BaseModel):
 
 @app.post("/auth/signup")
 def auth_signup(body: SignupRequest):
-    """Create a pending account, filed under the role it asks for, and return a
-    token for it. The portal uses the token to show the "waiting for approval"
-    screen; every data request made with it is refused until an admin approves
-    the account. Any hospital the client sends is ignored."""
-    return shared_auth.signup(db, body.email, body.password, role=body.role)
+    """Create a pending account, filed under the role and hospital it asks for,
+    and return a token for it. The portal uses the token to show the "waiting
+    for approval" screen; every data request made with it is refused until an
+    admin approves the account."""
+    return shared_auth.signup(db, body.email, body.password, role=body.role,
+                              hospital_id=body.hospital_id)
+
+
+@app.get("/auth/hospitals")
+def auth_hospitals():
+    """The hospitals a sign-up may ask to join - names and ids only. Open, like
+    sign-up itself: the portal's form needs it before anyone has an account."""
+    return user_admin.list_public_hospitals(db)
 
 
 @app.post("/auth/login")
@@ -274,6 +283,12 @@ def admin_update_user(user_id: str, body: UpdateUserRequest,
                       actor: dict = Depends(require_manager)):
     return user_admin.update_user(db, actor, user_id, body.role, body.status,
                                   body.hospital_id, body.insurer_id, body.name)
+
+
+@app.post("/auth/admin/users/{user_id}/decline")
+def admin_decline_signup(user_id: str, actor: dict = Depends(require_manager)):
+    """Turn down a sign-up's request to join the admin's hospital."""
+    return user_admin.decline_signup(db, actor, user_id)
 
 
 @app.post("/auth/admin/users/import")

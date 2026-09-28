@@ -227,6 +227,83 @@ def test_a_hospital_admin_approves_by_email_with_its_own_choice_of_role(db, worl
     assert (out["user"]["role"], out["user"]["hospital_id"]) == ("case_manager", "demo-hospital-a")
 
 
+# ------------------------------------ sign-ups that name their hospital
+def request(db, email, role="nurse", hospital="demo-hospital-a"):
+    return auth.signup(db, email, "their-own-password", role=role, hospital_id=hospital)["token"]
+
+
+def test_a_sign_up_can_name_a_hospital_without_joining_it(db, world):
+    t = request(db, "nurse@x.org")
+    stored = auth.users(db).find_one({"email": "nurse@x.org"})
+    assert (stored["hospital_id"], stored["requested_hospital_id"]) == (None, "demo-hospital-a")
+    refused(403, auth.authenticate, db, t)                        # sees nothing yet
+
+
+def test_insurers_and_unlisted_hospitals_name_no_hospital(db, world):
+    auth.signup(db, "claims@x.org", "their-own-password", role="insurer", hospital_id="demo-hospital-a")
+    auth.signup(db, "doc@x.org", "their-own-password", role="doctor", hospital_id="none")
+    for email in ("claims@x.org", "doc@x.org"):
+        assert auth.users(db).find_one({"email": email})["requested_hospital_id"] is None
+
+
+def test_a_hospital_admin_sees_the_requests_for_its_own_hospital_only(db, world):
+    request(db, "nurse@x.org")
+    request(db, "doc@x.org", role="doctor", hospital="demo-hospital-b")
+    request(db, "boss@x.org", role="hospital_admin")               # the superadmin's call
+    emails = {u["email"] for u in ua.list_users(db, world["admin_a"], status="pending")}
+    assert emails == {"nurse@x.org"}
+    assert {u["email"] for u in ua.list_users(db, world["admin_b"], status="pending")} == {"doc@x.org"}
+
+
+def test_a_hospital_admin_approves_a_request_into_its_hospital(db, world):
+    t = request(db, "nurse@x.org")
+    out = ua.update_user(db, world["admin_a"], uid(db, "nurse@x.org"), status="active", role="nurse")
+    assert (out["role"], out["hospital_id"], out["status"]) == ("nurse", "demo-hospital-a", "active")
+    assert auth.authenticate(db, t)["hospital_id"] == "demo-hospital-a"    # same token works now
+
+
+def test_a_hospital_admin_may_change_the_role_while_approving(db, world):
+    request(db, "cm@x.org", role="case_manager")
+    out = ua.update_user(db, world["admin_a"], uid(db, "cm@x.org"), status="active", role="nurse")
+    assert (out["role"], out["requested_role"]) == ("nurse", "case_manager")
+
+
+def test_another_hospitals_request_is_invisible_to_an_admin(db, world):
+    request(db, "doc@x.org", role="doctor", hospital="demo-hospital-b")
+    refused(404, ua.update_user, db, world["admin_a"], uid(db, "doc@x.org"), status="active")
+    refused(404, ua.decline_signup, db, world["admin_a"], uid(db, "doc@x.org"))
+    refused(409, ua.create_user, db, world["admin_a"], "doc@x.org", "doctor")   # nor by email
+
+
+def test_a_request_to_be_a_hospital_admin_goes_to_the_superadmin_only(db, world):
+    request(db, "boss@x.org", role="hospital_admin")
+    refused(404, ua.update_user, db, world["admin_a"], uid(db, "boss@x.org"), status="active")
+    out = ua.update_user(db, world["sa"], uid(db, "boss@x.org"), status="active")
+    assert (out["role"], out["hospital_id"]) == ("hospital_admin", "demo-hospital-a")
+
+
+def test_the_superadmin_approves_with_the_requested_hospital_filled_in(db, world):
+    request(db, "doc@x.org", role="doctor", hospital="demo-hospital-b")
+    out = ua.update_user(db, world["sa"], uid(db, "doc@x.org"), status="active")
+    assert (out["hospital_id"], out["status"]) == ("demo-hospital-b", "active")
+
+
+def test_declining_a_request_takes_it_off_the_hospitals_list(db, world):
+    t = request(db, "nurse@x.org")
+    out = ua.decline_signup(db, world["admin_a"], uid(db, "nurse@x.org"))
+    assert out["requested_hospital_id"] is None and out["declined"]["hospital_id"] == "demo-hospital-a"
+    assert out["declined"]["by"] == "admin@a.org"
+    assert "nurse@x.org" not in {u["email"] for u in ua.list_users(db, world["admin_a"])}
+    assert "nurse@x.org" in {u["email"] for u in ua.list_users(db, world["sa"], status="pending")}
+    refused(403, auth.authenticate, db, t)                        # still sees nothing
+    refused(404, ua.decline_signup, db, world["admin_a"], uid(db, "nurse@x.org"))
+
+
+def test_only_a_pending_request_can_be_declined(db, world):
+    ua.create_user(db, world["admin_a"], "doc@a.org", "doctor")
+    refused(409, ua.decline_signup, db, world["admin_a"], uid(db, "doc@a.org"))
+
+
 def test_listed_accounts_never_carry_a_password_hash(db, world):
     assert all("password_hash" not in u for u in ua.list_users(db, world["sa"]))
 

@@ -273,19 +273,34 @@ def requested_role(role: Optional[str]) -> str:
     return key
 
 
+def requested_hospital(db, role: str, hospital_id: Optional[str]) -> Optional[str]:
+    """The hospital a sign-up asks to join, checked against the real list.
+
+    Only hospital roles ask for one; an insurer belongs to an insurer, which our
+    team assigns. Blank or "none" ("my hospital isn't listed") asks for none, and
+    the request then waits for the superadmin."""
+    hospital_id = (hospital_id or "").strip()
+    if role not in HOSPITAL_ROLES or not hospital_id or hospital_id == "none":
+        return None
+    if not db.client[IDENTITY_DB]["hospitals"].find_one({"_id": hospital_id}, {"_id": 1}):
+        raise HTTPException(status_code=422, detail="No such hospital - choose one from the list")
+    return hospital_id
+
+
 def signup(db, email: str, password: str, app_access: Optional[list] = None,
-           role: Optional[str] = None) -> dict:
+           role: Optional[str] = None, hospital_id: Optional[str] = None) -> dict:
     """Create a self-service account and return a signed token for it.
 
-    The person may say which role they are joining as (SIGNUP_ROLES), which
-    files the request under that role for the admin. It stays a request: the
-    account is pending, with no hospital, and every data request is refused
-    until an admin approves it - confirming or changing the role and attaching
-    it to a hospital or insurer. Nobody chooses their own hospital: typing a
-    hospital's name must never be enough to see its patients.
+    The person says which role they are joining as (SIGNUP_ROLES) and, for a
+    hospital role, which hospital. Both are a request, filed for that
+    hospital's admin to approve or decline (the superadmin sees every request).
+    Until then the account is pending, `hospital_id` stays empty and every data
+    request is refused: choosing a hospital is never enough to see its
+    patients. The request is kept in `requested_role` / `requested_hospital_id`.
     """
     email = _validate_credentials(email, password)
     role = requested_role(role)
+    wanted_hospital = requested_hospital(db, role, hospital_id)
     now = _now()
     doc = {"email": email,
            "password_hash": hash_password(password),
@@ -293,6 +308,7 @@ def signup(db, email: str, password: str, app_access: Optional[list] = None,
            # Kept after approval too, so an admin can see what was asked for
            # even once the role has been changed.
            "requested_role": role,
+           "requested_hospital_id": wanted_hospital,
            "status": "pending",
            "hospital_id": None,
            "app_access": list(app_access) if app_access else list(DEFAULT_APP_ACCESS),
@@ -402,7 +418,9 @@ def public_view(account: dict) -> dict:
             "role": account["role"], "status": account["status"],
             "hospital_id": account["hospital_id"],
             "must_change_password": bool(account.get("must_change_password")),
-            "app_access": account["app_access"]}
+            "app_access": account["app_access"],
+            # So the portal's waiting screen can say which hospital was asked.
+            "requested_hospital_id": account.get("requested_hospital_id")}
 
 
 # --------------------------------------------------------- operator-only paths

@@ -39,6 +39,9 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
   const assignable = ASSIGNABLE[me?.role] || [];
 
   const [users, setUsers] = useState([]);
+  // Sign-ups waiting on this admin: for a hospital admin, the requests to join
+  // its hospital; for the superadmin, every one.
+  const [requests, setRequests] = useState([]);
   const [hospitals, setHospitals] = useState([]);
   const [insurers, setInsurers] = useState([]);
   // role files the list by role - including what each pending sign-up asked to be.
@@ -74,9 +77,13 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
       request(`/auth/admin/users${qs.toString() ? `?${qs}` : ''}`),
       request('/auth/admin/hospitals'),
       isSuper ? request('/auth/admin/insurers') : Promise.resolve([]),
-    ]).then(([u, h, i]) => {
+      request('/auth/admin/users?status=pending'),
+    ]).then(([u, h, i, pending]) => {
       if (!current) return;
       setUsers(u); setHospitals(h); setInsurers(i); setError(null);
+      // A suspended account is pending too, but keeps its hospital; a sign-up
+      // is attached to nothing yet.
+      setRequests(pending.filter((a) => !a.hospital_id && !a.insurer_id));
     }).catch((e) => { if (current) setError(e.message); });
     return () => { current = false; };
   }, [request, filter, isSuper, reloadKey]);
@@ -101,6 +108,17 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
       </div>
 
       {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+      {requests.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span>
+            <b>{requests.length}</b> {requests.length === 1 ? 'person has' : 'people have'} signed up
+            {isSuper ? '' : ` to join ${hospitalName(me?.hospital_id)}`} and {requests.length === 1 ? 'is' : 'are'} waiting
+            for approval.
+          </span>
+          <button className={ghost} onClick={() => setFilter({ ...filter, status: 'pending' })}>Review</button>
+        </div>
+      )}
       {notice && <Notice notice={notice} onClose={() => setNotice(null)} />}
 
       {isSuper && (
@@ -154,10 +172,14 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
             </thead>
             <tbody>
               {users.map((u) => (
-                <UserRow key={u.sub} user={u} me={me} myId={myId} isSuper={isSuper}
+                // Keyed on what the row starts from, so an approval or a decline
+                // resets its pickers instead of keeping the old choice.
+                <UserRow key={`${u.sub}:${u.status}:${u.hospital_id}:${u.requested_hospital_id}`}
+                         user={u} me={me} myId={myId} isSuper={isSuper}
                          assignable={assignable} hospitals={hospitals} insurers={insurers}
                          hospitalName={hospitalName} busy={busy}
-                         onSave={(body) => run(() => request(`/auth/admin/users/${u.sub}`, { method: 'PATCH', body }))} />
+                         onSave={(body) => run(() => request(`/auth/admin/users/${u.sub}`, { method: 'PATCH', body }))}
+                         onDecline={() => run(() => request(`/auth/admin/users/${u.sub}/decline`, { method: 'POST' }))} />
               ))}
               {!users.length && (
                 <tr><td colSpan={6} className="py-6 text-center text-gray-400">No accounts match.</td></tr>
@@ -251,20 +273,27 @@ function AccessLog({ request, isSuper, hospitals, hospitalName }) {
   );
 }
 
+// A self-signup nobody has approved yet: pending, attached to nothing.
+const isSignup = (user) => user.status === 'pending' && !user.hospital_id && !user.insurer_id;
+
 // Can this signed-in manager change this row? The same rules as the server's
 // _may_manage, so the controls shown are the ones that will work.
 function canManage(user, me, myId, isSuper) {
   if (user.role === 'superadmin' || user.sub === myId) return false;
   if (isSuper) return true;
-  return user.hospital_id === me?.hospital_id && ASSIGNABLE.hospital_admin.includes(user.role);
+  if (!ASSIGNABLE.hospital_admin.includes(user.role)) return false;
+  return user.hospital_id === me?.hospital_id
+    || (isSignup(user) && user.requested_hospital_id === me?.hospital_id);
 }
 
-function UserRow({ user, me, myId, isSuper, assignable, hospitals, insurers, hospitalName, busy, onSave }) {
+function UserRow({ user, me, myId, isSuper, assignable, hospitals, insurers, hospitalName, busy, onSave, onDecline }) {
   const [role, setRole] = useState(user.role);
-  const [hospitalId, setHospitalId] = useState(user.hospital_id || '');
+  // A sign-up starts on the hospital it asked to join, so approving it is one click.
+  const startingHospital = user.hospital_id || user.requested_hospital_id || '';
+  const [hospitalId, setHospitalId] = useState(startingHospital);
   const [insurerId, setInsurerId] = useState(user.insurer_id || '');
   const editable = canManage(user, me, myId, isSuper);
-  const changed = role !== user.role || (hospitalId || null) !== (user.hospital_id || null)
+  const changed = role !== user.role || (hospitalId || null) !== (startingHospital || null)
                   || (insurerId || null) !== (user.insurer_id || null);
   const placement = () => (HOSPITAL_ROLES.includes(role) ? { hospital_id: hospitalId || null }
                            : role === 'insurer' ? { insurer_id: insurerId || null } : {});
@@ -278,9 +307,15 @@ function UserRow({ user, me, myId, isSuper, assignable, hospitals, insurers, hos
         </div>
         {/* A sign-up names the role it wants; the admin confirms or changes it
             with the role picker before approving. */}
-        {user.status === 'pending' && user.requested_role && (
+        {isSignup(user) && user.requested_role && (
           <div className="mt-0.5 text-xs font-medium text-amber-700">
             Signed up as {ROLE_LABELS[user.requested_role] || user.requested_role}
+            {user.requested_hospital_id && <> for {hospitalName(user.requested_hospital_id)}</>}
+          </div>
+        )}
+        {isSignup(user) && user.declined && isSuper && (
+          <div className="mt-0.5 text-xs text-gray-500">
+            Request to join {hospitalName(user.declined.hospital_id)} declined by {user.declined.by}
           </div>
         )}
       </td>
@@ -303,7 +338,9 @@ function UserRow({ user, me, myId, isSuper, assignable, hospitals, insurers, hos
             <option value="">— choose —</option>
             {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </select>
-        ) : user.insurer_id || hospitalName(user.hospital_id)}
+        ) : user.insurer_id || (isSignup(user) && user.requested_hospital_id
+              ? <span className="text-amber-700">{hospitalName(user.requested_hospital_id)} (requested)</span>
+              : hospitalName(user.hospital_id))}
       </td>
       <td className="py-2 pr-3">
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -319,10 +356,14 @@ function UserRow({ user, me, myId, isSuper, assignable, hospitals, insurers, hos
               <button className={ghost} disabled={busy}
                       onClick={() => onSave({ role, ...placement() })}>Save</button>
             )}
-            {user.status === 'pending' ? (
+            {user.status === 'pending' ? (<>
               <button className={ghost} disabled={busy}
                       onClick={() => onSave({ status: 'active', role, ...placement() })}>Approve</button>
-            ) : (
+              {isSignup(user) && user.requested_hospital_id && (
+                <button className={ghost} disabled={busy} onClick={onDecline}
+                        title="Take this request off the hospital's list. The account stays pending.">Decline</button>
+              )}
+            </>) : (
               <button className={ghost} disabled={busy}
                       onClick={() => onSave({ status: 'pending' })}>Suspend</button>
             )}

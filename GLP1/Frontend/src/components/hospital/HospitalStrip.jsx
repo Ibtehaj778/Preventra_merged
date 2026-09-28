@@ -58,11 +58,6 @@ export default function HospitalStrip() {
               : 'GLP-1 therapy, dropout risk and care-team coverage for your patients'}
           </p>
         </div>
-        {hasStaff && data.staff && (
-          <Link to="/staff" className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--color-primary)' }}>
-            {data.staff.doctors} doctors · {data.staff.nurses} nurses <ArrowRight size={13} />
-          </Link>
-        )}
       </div>
 
       <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
@@ -72,10 +67,21 @@ export default function HospitalStrip() {
               '/patients?prediction=Dropout%20Risk')}
         {tile(AlertTriangle, 'High dropout risk', data.high_risk.toLocaleString(),
               `≥${Math.round(data.high_risk_threshold * 100)}% predicted risk`, '#EF6C00', '/patients?min_risk=75')}
+              {hasStaff && data.staff ? (<>
+        {tile(Stethoscope, 'Doctors', data.staff.doctors.toLocaleString(),
+              data.no_doctor ? `${data.no_doctor.toLocaleString()} patients without a doctor` : 'All patients assigned',
+              data.no_doctor ? '#EF6C00' : '#2E7D32',
+              data.no_doctor ? '/patients?unassigned=doctor' : '/staff')}
+        {tile(HeartPulse, 'Nurses', data.staff.nurses.toLocaleString(),
+              data.no_nurse ? `${data.no_nurse.toLocaleString()} patients without a nurse` : 'All patients assigned',
+              data.no_nurse ? '#EF6C00' : '#2E7D32',
+              data.no_nurse ? '/patients?unassigned=nurse' : '/staff')}
+      </>) : (<>
         {tile(Stethoscope, 'No doctor', data.no_doctor.toLocaleString(), `${pct(data.no_doctor)}% of patients`,
               data.no_doctor ? '#EF6C00' : '#2E7D32', '/patients?unassigned=doctor')}
         {tile(HeartPulse, 'No nurse', data.no_nurse.toLocaleString(), `${pct(data.no_nurse)}% of patients`,
               data.no_nurse ? '#EF6C00' : '#2E7D32', '/patients?unassigned=nurse')}
+      </>)}
       </div>
 
       <div className="grid gap-5 md:grid-cols-3 mt-5 pt-5 border-t border-gray-100">

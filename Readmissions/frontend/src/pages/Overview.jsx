@@ -116,12 +116,23 @@ export default function Overview() {
           sub="risk rising since discharge" to="/patients?trend=NeedsAttention" />
         <Tile icon={Bell} label="Open alerts" tone="amber" value={data.open_alerts.toLocaleString()}
           sub="risk increases and clinical alerts" />
+              {data.staff ? (<>
+        <Tile icon={Stethoscope} label="Doctors" tone={data.no_doctor ? 'amber' : 'green'}
+          value={data.staff.doctors.toLocaleString()}
+          sub={data.no_doctor ? `${data.no_doctor.toLocaleString()} patients without a doctor` : 'All patients assigned'}
+          to="/staff" />
+        <Tile icon={HeartPulse} label="Nurses" tone={data.no_nurse ? 'amber' : 'green'}
+          value={data.staff.nurses.toLocaleString()}
+          sub={data.no_nurse ? `${data.no_nurse.toLocaleString()} patients without a nurse` : 'All patients assigned'}
+          to="/staff" />
+      </>) : (<>
         <Tile icon={Stethoscope} label="No doctor assigned" tone={data.no_doctor ? 'amber' : 'green'}
           value={data.no_doctor.toLocaleString()} sub={`${pct(data.no_doctor)}% of patients`}
           to="/patients?unassigned=doctor" />
         <Tile icon={HeartPulse} label="No nurse assigned" tone={data.no_nurse ? 'amber' : 'green'}
           value={data.no_nurse.toLocaleString()} sub={`${pct(data.no_nurse)}% of patients`}
           to="/patients?unassigned=nurse" />
+      </>)}
         <Tile icon={CalendarCheck} label="Discharged in 30 days" value={data.discharged_30d.toLocaleString()}
           sub="before the batch date" />
         <Tile icon={ClipboardList} label="Admissions on record" value={data.admissions_on_record.toLocaleString()}

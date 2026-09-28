@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard, Users, UserCircle, PieChart, TrendingDown, UsersRound,
   Calculator, Settings, ChevronLeft, ChevronRight,
-  Activity, Building2, Stethoscope, AlertTriangle, LogOut, Menu, X, ExternalLink,
+  Building2, Stethoscope, AlertTriangle, LogOut, Menu, X, ExternalLink,
 } from 'lucide-react';
 import HospitalPicker from '../hospital/HospitalPicker';
 
@@ -105,10 +105,7 @@ export default function AppShell({ children }) {
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 h-[60px] flex-shrink-0 border-b border-white/10">
-          <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
-               style={{ background: 'var(--color-primary-light)' }}>
-            <Activity size={16} color="white" />
-          </div>
+                    <img src="/preventra-logo.png" alt="Preventra" className="flex-shrink-0 h-10 w-auto object-contain" />
           {!isCollapsed && (
             <div className="animate-fade-in overflow-hidden flex-1">
               <div className="text-white font-display text-sm font-semibold leading-tight">GLP-1</div>

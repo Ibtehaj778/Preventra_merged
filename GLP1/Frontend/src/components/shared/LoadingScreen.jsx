@@ -1,4 +1,3 @@
-import { Activity } from 'lucide-react';
 
 export default function LoadingScreen({ progress = 0, status = 'Loading…' }) {
   return (
@@ -15,7 +14,7 @@ export default function LoadingScreen({ progress = 0, status = 'Loading…' }) {
             className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-2xl animate-pulse"
             style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)' }}
           >
-            <Activity size={28} color="white" strokeWidth={2.2} />
+            <img src="/preventra-logo.png" alt="Preventra" className="h-14 w-auto object-contain" />
           </div>
           <div
             className="absolute inset-0 rounded-2xl"

@@ -17,6 +17,8 @@ import MyRecord from './pages/MyRecord';
 import { MANUAL_ENTRY_ENABLED } from './api';
 import { readClaims } from './api/auth';
 import { can, OVERVIEW_ROLES, STAFF_ROLES, CONSOLE_ROLES } from './roles';
+import LoadingScreen from './components/LoadingScreen';
+import { useAppLoader } from './hooks/useAppLoader';
 
 /**
  * The care-team dashboard.
@@ -32,6 +34,14 @@ import { can, OVERVIEW_ROLES, STAFF_ROLES, CONSOLE_ROLES } from './roles';
  * that assign. Doctors and nurses start on their Patients list.
  */
 function App() {
+  // The opening sequence, as in GLP-1: shown once per page load while the
+  // first requests wake the service. Navigating inside the app never repeats it.
+  const { ready, progress, status } = useAppLoader();
+  if (!ready) return <LoadingScreen progress={progress} status={status} />;
+  return <AppRoutes />;
+}
+
+function AppRoutes() {
   if (readClaims()?.role === 'patient') {
     return (
       <Router>

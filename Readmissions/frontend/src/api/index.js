@@ -83,6 +83,8 @@ const json = (body) => ({
 
 const RealAPI = {
   getSummary: () => apiFetch('/api/summary'),
+  /** The signed-in account as the auth service sees it now. */
+  getMe: () => apiFetch('/auth/me'),
 
   // ─── Hospital pages ──────────────────────────────────────────────────────
   // Overview layer only - counts, names, assignments. See api/hospital.py.
@@ -317,6 +319,10 @@ const RealAPI = {
 const API = USE_MOCK ? MockAPI : RealAPI;
 
 export const getSummary        = API.getSummary;
+export const getMe             = USE_MOCK ? () => Promise.resolve(null) : RealAPI.getMe;
+
+/** Wakes the API: the liveness probe needs no sign-in and touches no data. */
+export const pingService = () => fetch(`${BASE_URL}/healthz`);
 
 // Hospital pages - live data only. A made-up staff list or care team would be
 // indistinguishable on screen from a real one.

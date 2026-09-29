@@ -229,3 +229,16 @@ def test_the_chatbot_only_queries_the_accounts_patients(main, world, email):
     assert {pid for pid in EVERYONE if pid in text} == ACCOUNTS[email][3]
     counted = cq.count_patients(view)
     assert str(len(ACCOUNTS[email][3])) in json.dumps(counted)
+
+
+def test_score_history_is_the_weekly_series_for_a_monitored_patient(main, world):
+    """The detail page's chart shows discharge then each monitored week, not one
+    admission point - for the patient's own login too."""
+    db = world["db"]
+    db["weekly_monitoring"].delete_many({"patient_id": A4})
+    db["weekly_monitoring"].insert_many([
+        {"patient_id": A4, "week_number": w, "batch_date": LATEST, "risk_score": 30 + w * 2,
+         "risk_band": "Low"} for w in (2, 0, 1)])
+    body = as_user(main, world, "me@patient.test").get(f"/api/patients/{A4}").json()
+    assert body["history"] == [{"week": "Discharge", "score": 30.0}, {"week": "Wk 1", "score": 32.0},
+                               {"week": "Wk 2", "score": 34.0}]

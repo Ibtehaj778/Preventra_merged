@@ -873,14 +873,30 @@ def get_patient(patient_id: str, request: Request):
 
     drivers = _extract_drivers_from_row(row)
 
-    # Patient history from risk_registry collection
+    # Score history: the post-discharge weekly monitor when the patient has one
+    # (Discharge, then Wk 1..N - what "7 weeks monitored" refers to), otherwise
+    # one point per admission from the risk registry.
     history = []
     try:
-        registry_docs = list(
+        for doc in (db[WEEKLY_COLLECTION]
+                    .find(_patient_id_filter(patient_id), {"_id": 0, "week_number": 1, "risk_score": 1})
+                    .sort("week_number", 1)):
+            try:
+                wk, score = int(doc.get("week_number", len(history))), float(doc.get("risk_score", 0))
+            except (ValueError, TypeError):
+                continue
+            history.append({"week": "Discharge" if wk == 0 else f"Wk {wk}", "score": score})
+    except Exception as e:
+        print(f"Error fetching weekly monitoring history: {e}")
+
+    try:
+        registry_docs = [] if len(history) > 1 else list(
             db["risk_registry"]
             .find(_patient_id_filter(patient_id), {"_id": 0, "batch_date": 1, "risk_score": 1})
             .sort("batch_date", 1)
         )
+        if registry_docs:
+            history = []
         for doc in registry_docs:
             d = doc.get("batch_date", "")
             try:

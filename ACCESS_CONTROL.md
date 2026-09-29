@@ -18,7 +18,7 @@ hospital admin?** — and then walks through each build step in order.
 6. [Step 2 — Hospitals, insurers and User Management](#6-step-2--hospitals-insurers-and-user-management)
 7. [Step 3 — Every patient belongs to a hospital](#7-step-3--every-patient-belongs-to-a-hospital)
 8. [Step 4 — The hospital dashboards](#8-step-4--the-hospital-dashboards)
-9. [Step 5 — Choosing a role and hospital at sign-up](#9-step-5--choosing-a-role-and-hospital-at-sign-up)
+9. [Step 5 — Choosing a role at sign-up](#9-step-5--choosing-a-role-at-sign-up)
 10. [How a new person gets in, end to end](#10-how-a-new-person-gets-in-end-to-end)
 11. [Demo data and demo accounts](#11-demo-data-and-demo-accounts)
 12. [Where things live in the code](#12-where-things-live-in-the-code)
@@ -82,7 +82,7 @@ in *what kind of work* each one does.
 | **Sees which patients** | All of the hospital's | All of the hospital's |
 | **Patient list** | Overview only: risk, care team, insurer. **No diagnoses, drivers, vitals or drugs** | Everything, including diagnoses and risk drivers |
 | **Opening one patient's clinical details** | **Must give a reason** (care coordination, incident review, audit, billing). It is written to the access log | Opens directly, no reason asked |
-| **Adding and approving people** (User Management) | **Yes** — doctors, nurses, case managers, patients, including approving or declining the people who signed up for their hospital | No |
+| **Adding and approving people** (User Management) | **Yes** — doctors, nurses, case managers, patients | No |
 | **Access log** | **Can read** their hospital's log | No |
 | **Cost and ROI screens** (GLP-1 Budget Simulator, Cost of Inaction, drug spend) | **Yes** | No |
 | **Registering doctors for alerts** (Readmissions) | **Yes** | No |
@@ -153,7 +153,7 @@ hospital picker.
 | Add / upload patients | Yes | Yes | — | — | — | — | — |
 | Register doctors for alerts | Yes | Yes | — | — | — | — | — |
 | GLP-1 cost and ROI screens | Yes | Yes | — | — | — | Yes (members) | — |
-| User Management | Everyone, and every sign-up | Own hospital's staff and patients, and the sign-ups asking to join it | — | — | — | — | — |
+| User Management | Everyone | Own hospital's staff and patients | — | — | — | — | — |
 | Create hospitals and insurers | Yes | — | — | — | — | — | — |
 | Access log | All hospitals | Own hospital | — | — | — | — | — |
 | Forecast sweep | Yes | — | — | — | — | — | — |
@@ -282,70 +282,36 @@ routes checked nothing at all. GLP-1 had a role toggle anyone could flip.
 
 ---
 
-## 9. Step 5 — Choosing a role and hospital at sign-up
+## 9. Step 5 — Choosing a role at sign-up
 
-**Why:** Reeha suggested people pick their role at sign-up, so the admin can see
-at a glance who is waiting to join as what. Then, so that our team does not have
-to place every new doctor, nurse and patient by hand, people also pick **their
-hospital**, and **that hospital's admin approves them**. Both are only a
-**request**: nobody gets into a hospital by choosing it.
+**Why:** Reeha suggested it: when people pick their role at sign-up, the admin
+can see at a glance who is waiting to join as what, which makes approving them
+easier. It is safe because choosing a role is only a **request**.
 
 **What changed:**
 
-1. **The Portal's "Create account" form asks two things:**
-   - **"I am joining as"**: Doctor, Nurse or caretaker, Case manager, Hospital
-     administrator, Insurer, Patient. Picking one shows a one-line explanation
-     underneath, so people choose correctly. Superadmin is never offered, and
-     the server refuses it even if someone sends it directly.
-   - **"Your hospital"**, for the roles that work for a hospital (everything
-     except insurer): a list of the hospitals on the platform, plus **"My
-     hospital isn't listed"**. The list shows names only — but it is public:
-     anyone opening the sign-up page can see which hospitals use Preventra.
-2. **The account is pending and in no hospital** until someone approves it. It
-   sees no patient data. The request is kept on the account (`requested_role`,
-   `requested_hospital_id`).
-3. **The waiting screen** says, for example, "You asked to join Demo Hospital as:
-   Nurse. Its administrator will review your request."
-4. **The hospital admin decides** (User Management):
-   - A yellow banner says how many people have signed up to join their hospital.
-     **Review** shows them.
-   - Each request reads "Signed up as Nurse for Demo Hospital", with
-     **Approve** and **Decline**. The admin can change the role before approving
-     (among the roles they may give: doctor, nurse, case manager, patient).
-   - **Approve** puts the person in the hospital and activates them; their next
-     click works. **Decline** takes the request off the hospital's list; the
-     account stays pending, and the superadmin can still place it elsewhere.
-   - A hospital admin only ever sees requests for **their own** hospital, and
-     cannot approve someone who asked to join a different one — not even by
-     typing their email into "Add a person".
-5. **Requests to become a hospital admin go to the superadmin only.** One
-   hospital admin cannot make another.
-6. **The superadmin keeps full control.** They see every request, filter them by
-   status and role, and each request's hospital is already filled in, so
-   approving is one click. They can also change the role or hospital, decline,
-   or place people who chose "My hospital isn't listed" and insurers, who pick no
-   hospital.
+1. **The Portal's "Create account" form has an "I am joining as" dropdown**:
+   Doctor, Nurse or caretaker, Case manager, Hospital administrator, Insurer,
+   Patient. Picking one shows a one-line explanation of that role underneath, so
+   people choose correctly. Superadmin is never offered, and the server refuses
+   it even if someone sends it directly.
+2. **The account is still pending**, with no hospital, and sees nothing until an
+   admin approves it. Asking to be a hospital admin grants nothing.
+3. **The waiting screen** now says "You asked to join as: Doctor", for example.
+4. **User Management can filter accounts by role.** A pending sign-up shows
+   "Signed up as Doctor" under its email, and its role picker already shows the
+   role they asked for.
+5. **The admin still decides.** When approving, they can keep the requested role
+   or change it (for example someone who picked "Hospital administrator" but is
+   really a case manager). What they originally asked for is kept on the account.
+6. **The sign-up never asks for a hospital.** The admin assigns it on approval,
+   so typing a hospital's name is never enough to see its patients.
 
 ---
 
 ## 10. How a new person gets in, end to end
 
-### A. They sign up themselves (the normal way now)
-
-1. On the Portal they choose **Create one**, enter email and password, pick
-   **I am joining as** and **Your hospital**.
-2. They land on **"Your account is waiting for approval"**, which names the
-   hospital they asked to join.
-3. **Their hospital's admin** opens User Management, sees the banner, clicks
-   **Review**, then **Approve** (or **Decline**). The superadmin can do the same
-   for any hospital.
-   - Asked to be a **hospital admin**, or chose **"My hospital isn't listed"**,
-     or is an **insurer**: only the superadmin approves them, choosing the
-     hospital or insurer.
-4. The person clicks **Check again** (or signs in again) and sees their apps.
-   They keep the password they chose.
-
-### B. An admin adds them
+### A. An admin adds them (recommended for staff)
 
 1. The hospital admin (or superadmin) opens User Management → **Add a person**,
    enters the email, name and role.
@@ -354,8 +320,22 @@ hospital**, and **that hospital's admin approves them**. Both are only a
 3. The person signs in on the Portal, is asked to **set their own password**,
    and then sees their apps.
 
-If the email belongs to someone who already signed up for this hospital, "Add a
-person" approves them instead of creating a second account.
+### B. They sign up themselves
+
+1. On the Portal they choose **Create one**, enter email and password, and pick
+   **I am joining as**.
+2. They land on **"Your account is waiting for approval"**.
+3. Approval:
+   - **Superadmin:** User Management → filter **Pending** (and a role if useful)
+     → choose the hospital (or insurer) → **Approve**. The role can be changed
+     first.
+   - **Hospital admin:** User Management → **Add a person** with the same email
+     and the role they should have. Because the email belongs to a pending
+     sign-up, this approves it into the admin's hospital instead of creating a
+     second account. (Hospital admins do not see a list of all sign-ups: that
+     would show them people who signed up for other hospitals.)
+4. The person clicks **Check again** (or signs in again) and sees their apps. They
+   keep the password they chose.
 
 ---
 
@@ -374,14 +354,6 @@ person" approves them instead of creating a second account.
 | `cardiology@…`, `pulmonology@…`, `endocrinology@…`, `medicine@…` | Doctors (patients assigned by condition) |
 | `claims@medicare.test`, `claims@medicaid.test`, `claims@private.test`, `claims@other.test` | Insurers |
 | `patient1@…`, `patient2@…` | Patients, each linked to one record |
-
-- `demo_patient_logins.py --hospital "<name>"` puts **every** Readmissions patient
-  in that hospital (moving any from another hospital, with that hospital's doctor
-  and nurses taken off them and this hospital's given instead), and makes
-  `patient1@…` to `patient20@…`, each linked to one current patient: high,
-  medium and low risk in turn, across conditions. They sign in to Readmissions
-  only and land on their own record. All of them, including the two above, get
-  the password typed when it runs. `--dry-run` shows the list first.
 
 Demo accounts share one known password. Change it, or remove them, before anyone
 outside the team gets a link — real MIMIC data sits behind them.
@@ -404,7 +376,7 @@ outside the team gets a link — real MIMIC data sits behind them.
 | Readmissions pages | `Readmissions/frontend/src/pages/Overview.jsx`, `Patients.jsx`, `Staff.jsx`, `PatientDetail.jsx` |
 | GLP-1 pages | `GLP1/Frontend/src/pages/ExecutiveSummary.jsx` (Overview), `PatientRiskPanel.jsx` (Patients), `Staff.jsx`, `PatientDetail.jsx` |
 | Which menu items each role gets | `Readmissions/frontend/src/roles.js`, `GLP1/Frontend/src/context/RoleContext.jsx` |
-| Operator scripts | `Readmissions/scripts/create_superadmin.py`, `migrate_user_roles.py`, `seed_hospital.py`, `demo_patient_logins.py` |
+| Operator scripts | `Readmissions/scripts/create_superadmin.py`, `migrate_user_roles.py`, `seed_hospital.py` |
 | Tests for all of the above | `Readmissions/tests/units/test_auth.py`, `test_user_admin.py`, `test_isolation.py`, `test_hospital_pages.py`; `GLP1/Backend/tests/test_isolation.py`, `test_hospital_pages.py` |
 
 ---
@@ -415,7 +387,7 @@ outside the team gets a link — real MIMIC data sits behind them.
 |---|---|
 | Deactivate and delete accounts | "Suspend" (back to pending) exists; a proper deactivate and a superadmin-only delete do not. |
 | Email invites | Admins hand over temporary passwords for now; invites need an email service. |
-| Telling a declined person why | A declined account just stays waiting; the Portal does not yet say it was declined. |
+| Hospital admins seeing sign-ups for their hospital | Would need the sign-up to name a hospital, which also means showing the list of hospitals publicly. |
 | Forecast sweep per hospital | Superadmin only, because it currently scans every hospital at once. |
 | BMI and HbA1c over time (GLP-1) | Needs repeated measurements; the data has one snapshot per patient. |
 

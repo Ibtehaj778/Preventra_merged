@@ -102,23 +102,6 @@ export default function PatientDetail() {
     return 'text-risk-low';
   };
   
-  const getSuggestedActions = (band) => {
-    const normalized = band?.toLowerCase();
-    if (normalized === 'high') return [
-      "Schedule follow-up call within 48 hours.",
-      "Review medication adherence.",
-      "Arrange immediate post-discharge clinical evaluation."
-    ];
-    if (normalized === 'medium') return [
-      "Ensure outbound contact within 7 days.",
-      "Verify HbA1c labs have been scheduled for next month.",
-    ];
-    return [
-      "Maintain standard care routine.",
-      "Follow up during next scheduled annual visit."
-    ];
-  };
-
   if (loading) return <PageSkeleton />;
 
   if (error) {
@@ -172,7 +155,11 @@ export default function PatientDetail() {
   const currentBand = patient.current_band || patient.risk_band;
   const hasMonitoring =
     patient.current_score != null && patient.current_score !== patient.risk_score;
-  const actions = getSuggestedActions(currentBand);
+  // From the API, off the same verdict as the trend page and the ROI panel, so
+  // the checklist agrees with them: it depends on the direction of the score as
+  // well as its level.
+  const carePlan = patient.care_plan;
+  const actions = carePlan?.actions ?? [];
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -294,6 +281,9 @@ export default function PatientDetail() {
               <ListChecks className="text-gray-400" size={22} />
               <span>Suggested Clinical Actions</span>
             </h2>
+            {carePlan?.label && (
+              <p className="text-sm font-semibold text-gray-600 mb-3">{carePlan.label}</p>
+            )}
             <ul className="space-y-3">
               {actions.map((action, idx) => (
                 <li key={idx} className="flex items-start bg-gray-50 p-3 rounded-lg border border-gray-100">

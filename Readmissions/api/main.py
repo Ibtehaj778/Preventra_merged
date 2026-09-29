@@ -952,6 +952,11 @@ def get_patient(patient_id: str, request: Request):
                        for k in (row.get("clinical_groups") or [])],
         "drivers": drivers,
         "history": history,
+        # Level and direction of the current score, the same verdict as the
+        # trend page (roi_model.roi_case).
+        "care_plan": suggested_actions(
+            row.get("current_score", row.get("risk_score", 0)) or 0,
+            row.get("monitoring_status")),
     }
 
 
@@ -1922,7 +1927,7 @@ def get_pipeline_status(run_id: str, request: Request):
 # building, scoring, banding and SHAP-based driver extraction now live in
 # api/mimic_scoring.py; this module just exposes them over HTTP.
 from api import mimic_scoring
-from api.roi_model import compute_roi, roi_case
+from api.roi_model import compute_roi, roi_case, suggested_actions
 
 
 class ManualPatientInput(BaseModel):

@@ -242,3 +242,18 @@ def test_score_history_is_the_weekly_series_for_a_monitored_patient(main, world)
     body = as_user(main, world, "me@patient.test").get(f"/api/patients/{A4}").json()
     assert body["history"] == [{"week": "Discharge", "score": 30.0}, {"week": "Wk 1", "score": 32.0},
                                {"week": "Wk 2", "score": 34.0}]
+
+
+def test_the_care_plan_follows_the_trend_not_just_the_band(main, world):
+    """A recovering patient is not told to arrange an urgent evaluation."""
+    db = world["db"]
+    me = as_user(main, world, "me@patient.test")
+    db["patient_worklist"].update_many({"patient_id": A4}, {"$set": {
+        "current_score": 41.1, "current_band": "High", "monitoring_status": "improving"}})
+    plan = me.get(f"/api/patients/{A4}").json()["care_plan"]
+    assert plan["decision"] == "continue" and "do not escalate" in plan["label"]
+    assert not any("immediate" in a or "48 hours" in a for a in plan["actions"])
+    db["patient_worklist"].update_many({"patient_id": A4}, {"$set": {
+        "current_score": 70, "monitoring_status": "deteriorating"}})
+    plan = me.get(f"/api/patients/{A4}").json()["care_plan"]
+    assert plan["decision"] == "escalate" and any("48 hours" in a for a in plan["actions"])

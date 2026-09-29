@@ -242,6 +242,51 @@ def roi_case(risk_score: float, trend_status: Optional[str] = None) -> dict:
     }
 
 
+def suggested_actions(risk_score: float, trend_status: Optional[str] = None) -> dict:
+    """
+    The checklist on a patient's page, from the SAME verdict the trend page and
+    the ROI panel lead with (roi_case), so the three can never disagree.
+
+    It used to be three fixed lines per risk band, which told a recovering
+    patient at 41% to "arrange immediate clinical evaluation" one card below a
+    verdict of "do not escalate". Level and direction both decide the action.
+    """
+    case = roi_case(risk_score, trend_status)
+    decision = case["decision"]
+    actions = {
+        "escalate": [
+            "Contact the patient within 48 hours.",
+            "Review medication adherence and current symptoms.",
+            "Bring the follow-up appointment forward.",
+        ],
+        "intervene": [
+            "Confirm a follow-up call or visit within the next 7 days.",
+            "Review medication adherence and the discharge plan.",
+            "Check the follow-up appointment is booked and the patient can attend.",
+        ],
+        "continue": [
+            "Keep the current care plan going - it is working.",
+            "Re-check the score at the next weekly monitoring.",
+            "Do not add intensity unless the score turns upward.",
+        ],
+        "step_down": [
+            "Reduce check-in frequency.",
+            "Keep the weekly score running in the background.",
+            "Re-assess if the score rises again.",
+        ],
+        "watch": [
+            "Keep weekly monitoring going.",
+            f"Re-assess at the next score; intervening becomes worthwhile at {BREAK_EVEN_RISK_PCT}%.",
+            "Contact the patient sooner if the rise continues.",
+        ],
+        "monitor_only": [
+            "Continue routine weekly monitoring.",
+            "Re-assess if the score rises.",
+        ],
+    }[decision]
+    return {"decision": decision, "label": case["label"], "actions": actions}
+
+
 def compute_roi(risk_score: float,
                 effectiveness: Optional[float] = None,
                 readmission_cost: Optional[float] = None,

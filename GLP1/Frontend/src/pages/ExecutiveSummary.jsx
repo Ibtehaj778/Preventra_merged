@@ -165,6 +165,87 @@ export default function ExecutiveSummary() {
     return { ...seg, dropouts, atRisk, shareOfTotal, adherencePct, isHealthy };
   });
 
+  const CHARTS = {
+    drivers: (
+      <>
+        <SectionHeader title="Top Population Dropout Drivers" sub="What pushes patients to stop, averaged across all patients" />
+        <div className="space-y-2.5 mt-1">
+          {globalSHAPDrivers.slice(0, 6).map((d, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <span
+                className="text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0"
+                style={{
+                  width: 22, height: 22, minWidth: 22,
+                  background: i === 0 ? '#FFEBEE' : '#F7FAFC',
+                  color: i === 0 ? '#C62828' : '#718096',
+                }}
+              >
+                {i+1}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-700 truncate font-medium">{d.feature}</span>
+                  <span className="text-xs font-mono font-semibold ml-2 flex-shrink-0" style={{ color: '#4A5568' }}>
+                    {d.importance.toFixed(3)}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#EDF2F7' }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{
+                      width: `${Math.min(100, (d.importance / (globalSHAPDrivers[0]?.importance || 1)) * 100)}%`,
+                      background: `hsl(${220 - i * 20}, 65%, ${45 + i * 3}%)`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    ),
+    wasted: (
+      <>
+        <SectionHeader title="Wasted Spend by Segment" sub="Annual drug spend on patients who discontinue" />
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart data={adherenceBySegment.map(s => ({
+            name: s.segment.split(' ').slice(0,2).join(' '),
+            spend: Math.round((1-s.adherence) * s.n * summaryKPIs.avgAnnualCost),
+          }))} layout="vertical" margin={{ left: 0, right: 24, top: 4, bottom: 0 }}>
+            <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="#EDF2F7" />
+            <XAxis type="number" tickFormatter={v => `$${(v/1e6).toFixed(1)}M`} tick={{ fontSize: 10, fill: '#718096' }} axisLine={{ stroke: '#E2E8F0' }} tickLine={false} />
+            <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10, fill: '#718096' }} axisLine={false} tickLine={false} />
+            <Tooltip content={<ChartTooltip formatter={v => `$${v.toLocaleString()}`} />} />
+            <Bar dataKey="spend" name="Wasted Spend" radius={[0,4,4,0]}>
+              {adherenceBySegment.map((s, i) => <Cell key={i} fill={s.color} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </>
+    ),
+    timeline: (
+      <>
+        <SectionHeader title="Dropout Volume by Time Window" sub="Estimated patients discontinuing at each checkpoint" />
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart data={dropoutByWindow} margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#EDF2F7" />
+            <XAxis dataKey="window" tick={{ fontSize: 11, fill: '#718096' }} axisLine={{ stroke: '#E2E8F0' }} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: '#718096' }} axisLine={false} tickLine={false} />
+            <Tooltip content={<ChartTooltip />} />
+            <Bar dataKey="seg0" name="Low Urgency" fill={SEGMENT_COLORS[0]} stackId="a" />
+            <Bar dataKey="seg1" name="Financial Barrier" fill={SEGMENT_COLORS[1]} stackId="a" />
+            <Bar dataKey="seg2" name="Low Friction" fill={SEGMENT_COLORS[2]} stackId="a" />
+            <Bar dataKey="seg3" name="Moderate Risk" fill={SEGMENT_COLORS[3]} stackId="a" radius={[4,4,0,0]} />
+            <Legend iconType="circle" iconSize={8} formatter={v => <span style={{ fontSize: 10, color: '#718096' }}>{v}</span>} />
+          </BarChart>
+        </ResponsiveContainer>
+      </>
+    ),
+  };
+  const bottomCharts = isSuperadmin ? ['drivers', 'wasted', 'timeline']
+    : isCostView ? ['drivers', 'wasted']
+    : ['timeline', 'drivers'];
+
   return (
     <div className="exec-summary-page">
       {!isSuperadmin && <HospitalStrip />}
@@ -241,167 +322,17 @@ export default function ExecutiveSummary() {
         </div>
       </div>
 
-      {/* ── Zone C — Dropout Timeline + Drivers / Wasted Spend ──────── */}
-      {[isCostView, ...(isSuperadmin ? [false] : [])].map((showCost) => (
-      <div key={String(showCost)} className="exec-bottom-grid">
-        {/* Zone C left — role-based */}
-        <div className="card p-5 animate-fade-up stagger-5">
-          {showCost ? (() => {
-            const avgCost = summaryKPIs.avgAnnualCost;
-            const ranked = adherenceBySegment
-              .map(s => ({
-                name:      s.segment.split(' ').slice(0, 2).join(' '),
-                value:     Math.round(avgCost / Math.max(s.adherence, 0.01)),
-                color:     s.color,
-                n:         s.n,
-                adherence: s.adherence,
-              }))
-              .sort((a, b) => a.value - b.value);
-            // A hospital with no patients yet has no segments to rank.
-            if (!ranked.length) {
-              return <SectionHeader title="Cost per Adherent Patient-Year" sub="No patients yet" />;
-            }
-            const best  = ranked[0].value;
-            const worst = ranked[ranked.length - 1].value;
-            return (
-              <>
-                <SectionHeader
-                  title="Cost per Adherent Patient-Year"
-                  sub="Ranked by payer value — annual drug spend ÷ adherence rate" />
-                <div className="space-y-2 mt-1">
-                  {ranked.map((d, i) => {
-                    const isBest  = i === 0;
-                    const isWorst = i === ranked.length - 1;
-                    const tier =
-                      isBest  ? { label: 'Best value',     bg: '#F0FFF4', tint: '#E8F5E9' } :
-                      isWorst ? { label: 'Critical waste', bg: '#FFF8F8', tint: '#FFEBEE' } :
-                      i === 1 ? { label: 'Strong value',   bg: 'white',   tint: '#F7FAFC' } :
-                                { label: 'Inefficient',    bg: 'white',   tint: '#FFF3E0' };
-                    return (
-                      <div key={i}
-                        className="flex items-center justify-between rounded-xl px-3 py-2.5 transition-all"
-                        style={{
-                          background: tier.bg,
-                          border: `1px solid ${isBest ? '#C8E6C9' : isWorst ? '#FFCDD2' : '#E2E8F0'}`,
-                          borderLeft: `4px solid ${d.color}`,
-                        }}>
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="font-display text-lg font-bold w-6 flex-shrink-0 text-center"
-                                style={{ color: isBest ? '#2E7D32' : isWorst ? '#C62828' : '#CBD5E0' }}>
-                            {i + 1}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-gray-800 leading-tight truncate">{d.name}</div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                                    style={{ background: tier.tint, color: d.color }}>
-                                {tier.label}
-                              </span>
-                              <span className="text-[10px] text-gray-400">
-                                {Math.round(d.adherence * 100)}% adherent
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0 ml-3">
-                          <div className="font-display text-xl font-bold leading-none" style={{ color: d.color }}>
-                            ${(d.value / 1000).toFixed(1)}<span className="text-sm">K</span>
-                          </div>
-                          <div className="text-[10px] text-gray-400 mt-1 font-mono">
-                            {isBest ? 'baseline' : `${(d.value / best).toFixed(1)}× best`}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
-                  <span>Spread: <b className="text-gray-600 font-mono">${best.toLocaleString()}</b> → <b className="text-gray-600 font-mono">${worst.toLocaleString()}</b></span>
-                  <span><b className="text-gray-600">{(worst / best).toFixed(1)}×</b> gap between best and worst</span>
-                </div>
-              </>
-            );
-          })() : (
-            <>
-              <SectionHeader title="Dropout Volume by Time Window" sub="Estimated patients discontinuing at each checkpoint" />
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={dropoutByWindow} margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#EDF2F7" />
-                  <XAxis dataKey="window" tick={{ fontSize: 11, fill: '#718096' }} axisLine={{ stroke: '#E2E8F0' }} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: '#718096' }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="seg0" name="Low Urgency" fill={SEGMENT_COLORS[0]} stackId="a" />
-                  <Bar dataKey="seg1" name="Financial Barrier" fill={SEGMENT_COLORS[1]} stackId="a" />
-                  <Bar dataKey="seg2" name="Low Friction" fill={SEGMENT_COLORS[2]} stackId="a" />
-                  <Bar dataKey="seg3" name="Moderate Risk" fill={SEGMENT_COLORS[3]} stackId="a" radius={[4,4,0,0]} />
-                  <Legend iconType="circle" iconSize={8} formatter={v => <span style={{ fontSize: 10, color: '#718096' }}>{v}</span>} />
-                </BarChart>
-              </ResponsiveContainer>
-            </>
-          )}
-        </div>
-
-        {/* Global SHAP drivers or wasted spend (role-based) */}
-        <div className="card p-5 animate-fade-up stagger-6">
-          {showCost ? (
-            <>
-              <SectionHeader title="Wasted Spend by Segment" sub="Annual drug spend on patients who discontinue" />
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={adherenceBySegment.map(s => ({
-                  name: s.segment.split(' ').slice(0,2).join(' '),
-                  spend: Math.round((1-s.adherence) * s.n * summaryKPIs.avgAnnualCost),
-                }))} layout="vertical" margin={{ left: 0, right: 24, top: 4, bottom: 0 }}>
-                  <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="#EDF2F7" />
-                  <XAxis type="number" tickFormatter={v => `$${(v/1e6).toFixed(1)}M`} tick={{ fontSize: 10, fill: '#718096' }} axisLine={{ stroke: '#E2E8F0' }} tickLine={false} />
-                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10, fill: '#718096' }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<ChartTooltip formatter={v => `$${v.toLocaleString()}`} />} />
-                  <Bar dataKey="spend" name="Wasted Spend" radius={[0,4,4,0]}>
-                    {adherenceBySegment.map((s, i) => <Cell key={i} fill={s.color} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </>
-          ) : (
-            <>
-              <SectionHeader title="Top Population Dropout Drivers" sub="Mean absolute SHAP impact across all patients" />
-              <div className="space-y-2.5 mt-1">
-                {globalSHAPDrivers.slice(0, 6).map((d, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <span
-                      className="text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{
-                        width: 22, height: 22, minWidth: 22,
-                        background: i === 0 ? '#FFEBEE' : '#F7FAFC',
-                        color: i === 0 ? '#C62828' : '#718096',
-                      }}
-                    >
-                      {i+1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-700 truncate font-medium">{d.feature}</span>
-                        <span className="text-xs font-mono font-semibold ml-2 flex-shrink-0" style={{ color: '#4A5568' }}>
-                          {d.importance.toFixed(3)}
-                        </span>
-                      </div>
-                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#EDF2F7' }}>
-                        <div
-                          className="h-full rounded-full transition-all duration-700"
-                          style={{
-                            width: `${(d.importance / 0.55) * 100}%`,
-                            background: `hsl(${220 - i * 20}, 65%, ${45 + i * 3}%)`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+      {/* ── Zone C — the charts under the segments ────────────────────
+          Budget roles (hospital admin, insurer): why patients stop, and
+          what it costs. Care roles: why they stop, and when. The superadmin
+          sees all three. */}
+      <div className="exec-bottom-grid">
+        {bottomCharts.map((key, i) => (
+          <div key={key} className={`card p-5 animate-fade-up stagger-${5 + (i % 2)}`}>
+            {CHARTS[key]}
+          </div>
+        ))}
       </div>
-      ))}
     </div>
   );
 }

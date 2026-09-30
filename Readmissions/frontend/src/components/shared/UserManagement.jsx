@@ -166,8 +166,11 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-200 text-xs uppercase text-gray-500">
+              {/* A hospital admin only ever sees its own hospital's people, so a
+                  hospital column would say the same thing on every row. */}
               <tr><th className="py-2 pr-3">Account</th><th className="py-2 pr-3">Role</th>
-                  <th className="py-2 pr-3">Hospital / insurer</th><th className="py-2 pr-3">Status</th>
+                  {isSuper && <><th className="py-2 pr-3">Hospital</th><th className="py-2 pr-3">Insurer</th></>}
+                  <th className="py-2 pr-3">Status</th>
                   <th className="py-2 pr-3">Created</th><th className="py-2" /></tr>
             </thead>
             <tbody>
@@ -182,7 +185,7 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
                          onDecline={() => run(() => request(`/auth/admin/users/${u.sub}/decline`, { method: 'POST' }))} />
               ))}
               {!users.length && (
-                <tr><td colSpan={6} className="py-6 text-center text-gray-400">No accounts match.</td></tr>
+                <tr><td colSpan={isSuper ? 7 : 5} className="py-6 text-center text-gray-400">No accounts match.</td></tr>
               )}
             </tbody>
           </table>
@@ -327,21 +330,28 @@ function UserRow({ user, me, myId, isSuper, assignable, hospitals, insurers, hos
           </select>
         ) : ROLE_LABELS[user.role] || user.role}
       </td>
-      <td className="py-2 pr-3">
-        {editable && isSuper && HOSPITAL_ROLES.includes(role) ? (
-          <select className={input} value={hospitalId} onChange={(e) => setHospitalId(e.target.value)}>
-            <option value="">— choose —</option>
-            {hospitals.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-        ) : editable && isSuper && role === 'insurer' ? (
-          <select className={input} value={insurerId} onChange={(e) => setInsurerId(e.target.value)}>
-            <option value="">— choose —</option>
-            {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-        ) : user.insurer_id || (isSignup(user) && user.requested_hospital_id
-              ? <span className="text-amber-700">{hospitalName(user.requested_hospital_id)} (requested)</span>
-              : hospitalName(user.hospital_id))}
-      </td>
+      {isSuper && (<>
+        <td className="py-2 pr-3">
+          {editable && HOSPITAL_ROLES.includes(role) ? (
+            <select className={input} value={hospitalId} onChange={(e) => setHospitalId(e.target.value)}>
+              <option value="">— choose —</option>
+              {hospitals.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
+          ) : isSignup(user) && user.requested_hospital_id ? (
+            <span className="text-amber-700">{hospitalName(user.requested_hospital_id)} (requested)</span>
+          ) : user.hospital_id ? hospitalName(user.hospital_id) : <span className="text-gray-400">—</span>}
+        </td>
+        <td className="py-2 pr-3">
+          {editable && role === 'insurer' ? (
+            <select className={input} value={insurerId} onChange={(e) => setInsurerId(e.target.value)}>
+              <option value="">— choose —</option>
+              {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select>
+          ) : user.insurer_id
+            ? (insurers.find((i) => i.id === user.insurer_id)?.name || user.insurer_id)
+            : <span className="text-gray-400">—</span>}
+        </td>
+      </>)}
       <td className="py-2 pr-3">
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
           user.status === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>

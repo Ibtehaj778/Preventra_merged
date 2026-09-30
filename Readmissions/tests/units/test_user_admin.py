@@ -299,6 +299,30 @@ def test_declining_a_request_takes_it_off_the_hospitals_list(db, world):
     refused(404, ua.decline_signup, db, world["admin_a"], uid(db, "nurse@x.org"))
 
 
+def test_a_declined_person_can_sign_up_again(db, world):
+    request(db, "nurse@x.org")
+    ua.decline_signup(db, world["admin_a"], uid(db, "nurse@x.org"))
+    # Same email, a new password and another hospital: the old request is replaced.
+    auth.users(db).database.client[auth.IDENTITY_DB]["hospitals"].update_one(
+        {"_id": "demo-hospital-b"}, {"$setOnInsert": {"name": "B"}}, upsert=True)
+    t = auth.signup(db, "nurse@x.org", "a-brand-new-password", role="doctor",
+                    hospital_id="demo-hospital-b")["token"]
+    stored = auth.users(db).find_one({"email": "nurse@x.org"})
+    assert auth.users(db).count_documents({"email": "nurse@x.org"}) == 1
+    assert (stored["status"], stored["hospital_id"]) == ("pending", None)
+    assert (stored["requested_role"], stored["requested_hospital_id"]) == ("doctor", "demo-hospital-b")
+    assert stored["declined"] is None and stored["previous_declines"][0]["by"] == "admin@a.org"
+    assert auth.password_matches("a-brand-new-password", stored["password_hash"])
+    refused(403, auth.authenticate, db, t)                        # still waits for approval
+
+
+def test_signing_up_again_never_replaces_a_live_or_waiting_account(db, world):
+    ua.create_user(db, world["admin_a"], "doc@a.org", "doctor")
+    refused(409, auth.signup, db, "doc@a.org", "some-password-1", role="doctor")
+    request(db, "nurse@x.org")                                    # waiting, not declined
+    refused(409, auth.signup, db, "nurse@x.org", "some-password-1", role="nurse")
+
+
 def test_only_a_pending_request_can_be_declined(db, world):
     ua.create_user(db, world["admin_a"], "doc@a.org", "doctor")
     refused(409, ua.decline_signup, db, world["admin_a"], uid(db, "doc@a.org"))

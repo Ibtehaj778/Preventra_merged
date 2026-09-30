@@ -297,6 +297,11 @@ def signup(db, email: str, password: str, app_access: Optional[list] = None,
     Until then the account is pending, `hospital_id` stays empty and every data
     request is refused: choosing a hospital is never enough to see its
     patients. The request is kept in `requested_role` / `requested_hospital_id`.
+
+    Someone whose request was declined may sign up again with the same email:
+    the new sign-up replaces the declined one (new password, role and
+    hospital) and goes back into the queue. Past declines are kept on the
+    account. Any other existing account with that email is refused, as before.
     """
     email = _validate_credentials(email, password)
     role = requested_role(role)
@@ -314,6 +319,15 @@ def signup(db, email: str, password: str, app_access: Optional[list] = None,
            "app_access": list(app_access) if app_access else list(DEFAULT_APP_ACCESS),
            "created_at": now,
            "updated_at": now}
+    existing = users(db).find_one({"email": email})
+    if existing and _was_declined(existing):
+        fields = {k: v for k, v in doc.items() if k not in ("email", "created_at")}
+        users(db).update_one({"_id": existing["_id"], "declined": existing["declined"]},
+                             {"$set": {**fields, "declined": None},
+                              "$push": {"previous_declines": existing["declined"]}})
+        return issue_token({**existing, **fields, "declined": None})
+    if existing:
+        raise HTTPException(status_code=409, detail="An account with that email already exists")
     try:
         doc["_id"] = users(db).insert_one(doc).inserted_id
     except Exception as exc:
@@ -322,6 +336,15 @@ def signup(db, email: str, password: str, app_access: Optional[list] = None,
                                 detail="An account with that email already exists") from exc
         raise
     return issue_token(doc)
+
+
+def _was_declined(account: dict) -> bool:
+    """A sign-up an admin turned down, still attached to nothing - the only
+    kind of existing account a new sign-up may replace. It never had access,
+    so replacing it gives nobody anything they did not have."""
+    return (bool(account.get("declined")) and account.get("status") == "pending"
+            and not account.get("hospital_id") and not account.get("insurer_id")
+            and not account.get("requested_hospital_id"))
 
 
 # ------------------------------------------------------------------------ login

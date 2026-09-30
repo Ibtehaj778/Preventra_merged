@@ -14,13 +14,17 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import HTTPException
 
-from core.access import COST_VIEW_ROLES, hospital_of, require_patient, scope_query
+from pymongo import UpdateOne
+
+from core.access import (COST_VIEW_ROLES, doctor_ids, doctor_query, hospital_of,
+                         require_patient, scope_query)
 from core.mongo import get_db, get_shared_identity_db
 
 HIGH_RISK = 0.75
 MAX_BATCH_ASSIGN = 500
+MAX_TEAM = 20            # doctors, and nurses, on one patient
 _ACCESS_FIELDS = {"_id": 0, "patient_idx": 1, "hospital_id": 1, "insurer_id": 1,
-                  "assigned_doctor_id": 1, "assigned_nurse_ids": 1}
+                  "assigned_doctor_id": 1, "assigned_doctor_ids": 1, "assigned_nurse_ids": 1}
 
 
 def _object_ids(ids) -> list:
@@ -54,10 +58,11 @@ async def owners(idxs) -> dict:
 
 
 async def care_teams(idxs) -> dict:
-    """patient_idx -> {"doctor", "nurses", "insurer", "pharmacy", "hospital_id"}, with
-    names. Three queries however many patients - the list loads all of them."""
+    """patient_idx -> {"doctors", "nurses", "insurer", "pharmacy", "hospital_id"},
+    with names. Three queries however many patients - the list loads all of
+    them. "doctor" is the first doctor, for callers that show only one."""
     own = await owners(idxs)
-    people_ids = {o["assigned_doctor_id"] for o in own.values() if o.get("assigned_doctor_id")}
+    people_ids = {d for o in own.values() for d in doctor_ids(o)}
     people_ids |= {n for o in own.values() for n in (o.get("assigned_nurse_ids") or [])}
     insurer_ids = {o["insurer_id"] for o in own.values() if o.get("insurer_id")}
     ident = get_shared_identity_db()
@@ -68,9 +73,11 @@ async def care_teams(idxs) -> dict:
     out = {}
     for idx in idxs:
         o = own.get(int(idx), {})
+        doctors = [people[d] for d in doctor_ids(o) if d in people]
         out[int(idx)] = {
             "hospital_id": o.get("hospital_id"),
-            "doctor": people.get(o.get("assigned_doctor_id")) if o.get("assigned_doctor_id") else None,
+            "doctors": doctors,
+            "doctor": doctors[0] if doctors else None,
             "nurses": [people[n] for n in (o.get("assigned_nurse_ids") or []) if n in people],
             "insurer": insurers.get(o.get("insurer_id")) if o.get("insurer_id") else None,
             "pharmacy": o.get("pharmacy"),
@@ -87,8 +94,9 @@ async def care_filter(scope: Optional[list], doctor: Optional[str] = None,
     if unassigned in ("doctor", "nurse"):
         # A patient with no patient_access record has nobody either, so this
         # is worked out as "in scope, minus those who have one".
-        has_one = ({"assigned_doctor_id": {"$nin": [None, ""]}} if unassigned == "doctor"
-                   else {"assigned_nurse_ids.0": {"$exists": True}})
+        has_one = ({"$or": [{"assigned_doctor_id": {"$nin": [None, ""]}},
+                            {"assigned_doctor_ids.0": {"$exists": True}}]}
+                   if unassigned == "doctor" else {"assigned_nurse_ids.0": {"$exists": True}})
         has = {int(d["patient_idx"]) for d in await get_db().patient_access.find(
             {**scope_query(scope), **has_one}, {"_id": 0, "patient_idx": 1}).to_list(length=None)}
         everyone = scope if scope is not None else [
@@ -97,7 +105,7 @@ async def care_filter(scope: Optional[list], doctor: Optional[str] = None,
         return [i for i in everyone if int(i) not in has]
     query = dict(scope_query(scope))
     if doctor:
-        query["assigned_doctor_id"] = doctor
+        query.update(doctor_query(doctor))
     if nurse:
         query["assigned_nurse_ids"] = nurse
     docs = await get_db().patient_access.find(query, {"_id": 0, "patient_idx": 1}).to_list(length=None)
@@ -105,18 +113,48 @@ async def care_filter(scope: Optional[list], doctor: Optional[str] = None,
 
 
 async def assign(user: dict, scope: Optional[list], patient_idxs: list,
-                 doctor_id: Optional[str] = None, nurse_ids: Optional[list] = None,
-                 add_nurse_ids: Optional[list] = None) -> dict:
-    """Set the doctor and nurses of one or more patients - the same rules as
-    Readmissions/api/hospital.assign: None leaves a field, "" clears the
-    doctor, every person must be an active account of the patients' hospital,
-    and nothing is written unless everything checks out."""
+                 doctor_id: Optional[str] = None, doctor_ids_: Optional[list] = None,
+                 add_doctor_ids: Optional[list] = None, remove_doctor_ids: Optional[list] = None,
+                 nurse_ids: Optional[list] = None, add_nurse_ids: Optional[list] = None,
+                 remove_nurse_ids: Optional[list] = None) -> dict:
+    """Change the doctors and nurses of one or more patients.
+
+    For each of doctors and nurses, either set the whole list (`doctor_ids`,
+    `nurse_ids`; an empty list clears it) or add and remove people from
+    whoever each patient already has (`add_*`, `remove_*`). `doctor_id` is the
+    older one-doctor form: "x" sets the list to [x], "" clears it.
+
+    Everyone added must be an active doctor or nurse of the patients'
+    hospital. Anyone can be removed - including someone who has since left.
+    Nothing is written unless every patient checks out."""
     idxs = list(dict.fromkeys(int(i) for i in (patient_idxs or [])))
     if not idxs:
         raise HTTPException(status_code=422, detail="Choose at least one patient")
     if len(idxs) > MAX_BATCH_ASSIGN:
         raise HTTPException(status_code=422, detail=f"At most {MAX_BATCH_ASSIGN} patients at a time")
-    if doctor_id is None and nurse_ids is None and not add_nurse_ids:
+
+    clean = lambda ids: list(dict.fromkeys(str(i).strip() for i in (ids or []) if str(i).strip()))
+    if doctor_id is not None:
+        if doctor_ids_ is not None:
+            raise HTTPException(status_code=422, detail="Send doctor_id or doctor_ids, not both")
+        doctor_ids_ = [doctor_id] if doctor_id.strip() else []
+    changes = {}
+    for kind, replace, add, remove in (("doctor", doctor_ids_, add_doctor_ids, remove_doctor_ids),
+                                       ("nurse", nurse_ids, add_nurse_ids, remove_nurse_ids)):
+        add, remove = clean(add), clean(remove)
+        if replace is not None and (add or remove):
+            raise HTTPException(status_code=422,
+                                detail=f"Either set the {kind}s or add and remove them, not both")
+        if set(add) & set(remove):
+            raise HTTPException(status_code=422, detail=f"The same {kind} cannot be added and removed")
+        if replace is not None:
+            replace = clean(replace)
+            if len(replace) > MAX_TEAM:
+                raise HTTPException(status_code=422, detail=f"At most {MAX_TEAM} {kind}s per patient")
+            changes[kind] = ("set", replace, [])
+        elif add or remove:
+            changes[kind] = ("edit", add, remove)
+    if not changes:
         raise HTTPException(status_code=422, detail="Nothing to change")
     for idx in idxs:
         require_patient(scope, idx)
@@ -132,30 +170,39 @@ async def assign(user: dict, scope: Optional[list], patient_idxs: list,
         raise HTTPException(status_code=409, detail="Assign one hospital's patients at a time")
     hospital = hospitals.pop()
 
+    # Everyone being given a patient must work in that patient's hospital.
     users = get_shared_identity_db().users
-    doctor_id = doctor_id.strip() if isinstance(doctor_id, str) else doctor_id
-    if doctor_id:
-        found = await users.find_one({"_id": {"$in": _object_ids([doctor_id])}, "role": "doctor",
-                                      "status": "active", "hospital_id": hospital}, {"_id": 1})
-        if not found:
-            raise HTTPException(status_code=404, detail="Doctor not found in this hospital")
-    wanted = [str(n) for n in (nurse_ids or []) + (add_nurse_ids or [])]
-    if wanted:
+    for kind, (mode, wanted, _) in changes.items():
+        if not wanted:
+            continue
         found = {str(u["_id"]) for u in await users.find(
-            {"_id": {"$in": _object_ids(wanted)}, "role": "nurse", "status": "active",
+            {"_id": {"$in": _object_ids(wanted)}, "role": kind, "status": "active",
              "hospital_id": hospital}, {"_id": 1}).to_list(length=None)}
-        if any(n not in found for n in wanted):
-            raise HTTPException(status_code=404, detail="Nurse not found in this hospital")
+        if any(p not in found for p in wanted):
+            raise HTTPException(status_code=404, detail=f"{kind.title()} not found in this hospital")
 
-    update: dict = {"$set": {"care_team_updated_at": datetime.now(timezone.utc),
-                             "care_team_updated_by": user.get("email", "")}}
-    if doctor_id is not None:
-        update["$set"]["assigned_doctor_id"] = doctor_id or None
-    if nurse_ids is not None:
-        update["$set"]["assigned_nurse_ids"] = list(dict.fromkeys(str(n) for n in nurse_ids))
-    elif add_nurse_ids:
-        update["$addToSet"] = {"assigned_nurse_ids": {"$each": [str(n) for n in add_nurse_ids]}}
-    result = await get_db().patient_access.update_many({"patient_idx": {"$in": idxs}}, update)
+    # Work out every patient's new team first; write only if all are valid.
+    stamp = {"care_team_updated_at": datetime.now(timezone.utc),
+             "care_team_updated_by": user.get("email", "")}
+    ops = []
+    for idx in idxs:
+        record = own[idx]
+        fields = dict(stamp)
+        for kind, (mode, wanted, removed) in changes.items():
+            before = doctor_ids(record) if kind == "doctor" else \
+                [str(n) for n in (record.get("assigned_nurse_ids") or [])]
+            after = wanted if mode == "set" else \
+                [p for p in before if p not in removed] + [p for p in wanted if p not in before]
+            if len(after) > MAX_TEAM:
+                raise HTTPException(status_code=422,
+                                    detail=f"Patient {idx} would have more than {MAX_TEAM} {kind}s")
+            if kind == "doctor":
+                fields["assigned_doctor_ids"] = after
+                fields["assigned_doctor_id"] = after[0] if after else None
+            else:
+                fields["assigned_nurse_ids"] = after
+        ops.append(UpdateOne({"patient_idx": idx}, {"$set": fields}))
+    result = await get_db().patient_access.bulk_write(ops, ordered=False)
     return {"updated": result.matched_count, "patient_ids": idxs}
 
 
@@ -181,7 +228,7 @@ async def overview(user: dict, scope: Optional[list]) -> dict:
     drug_mix = sorted(({"drug": k, "count": v} for k, v in drugs.items()), key=lambda d: -d["count"])
 
     own = await owners([r["patient_idx"] for r in rows])
-    no_doctor = sum(1 for r in rows if not own.get(int(r["patient_idx"]), {}).get("assigned_doctor_id"))
+    no_doctor = sum(1 for r in rows if not doctor_ids(own.get(int(r["patient_idx"]), {})))
     no_nurse = sum(1 for r in rows if not own.get(int(r["patient_idx"]), {}).get("assigned_nurse_ids"))
     mix: dict = {}
     for r in rows:
@@ -250,8 +297,8 @@ async def staff(user: dict, scope: Optional[list]) -> dict:
     by_nurse: dict = {}
     for o in (await owners([r["patient_idx"] for r in rows])).values():
         idx = int(o["patient_idx"])
-        if o.get("assigned_doctor_id"):
-            by_doctor.setdefault(o["assigned_doctor_id"], set()).add(idx)
+        for d in doctor_ids(o):
+            by_doctor.setdefault(d, set()).add(idx)
         for n in o.get("assigned_nurse_ids") or []:
             by_nurse.setdefault(str(n), set()).add(idx)
 
@@ -259,13 +306,21 @@ async def staff(user: dict, scope: Optional[list]) -> dict:
         return {"patients": len(idxs), "non_adherent": len(idxs & non_adherent),
                 "high_risk": len(idxs & high)}
 
-    users = get_shared_identity_db().users
-    doctors = [{**_person(a), "hospital_id": a.get("hospital_id"),
-                **counts(by_doctor.get(str(a["_id"]), set()))}
-               for a in await users.find({**q, "role": "doctor"}).sort("email", 1).to_list(length=None)]
-    nurses = [{**_person(a), "hospital_id": a.get("hospital_id"),
-               **counts(by_nurse.get(str(a["_id"]), set()))}
-              for a in await users.find({**q, "role": "nurse"}).sort("email", 1).to_list(length=None)]
+    ident = get_shared_identity_db()
+    accounts = await ident.users.find({**q, "role": {"$in": ["doctor", "nurse"]}}).sort(
+        "email", 1).to_list(length=None)
+    # Hospital names for the superadmin's all-hospitals view (and its search).
+    names = {h["_id"]: h.get("name", h["_id"]) for h in await ident.hospitals.find(
+        {"_id": {"$in": list({a.get("hospital_id") for a in accounts if a.get("hospital_id")})}},
+        {"name": 1}).to_list(length=None)}
+
+    def row(a: dict, assigned: dict) -> dict:
+        return {**_person(a), "hospital_id": a.get("hospital_id"),
+                "hospital_name": names.get(a.get("hospital_id")),
+                **counts(assigned.get(str(a["_id"]), set()))}
+
+    doctors = [row(a, by_doctor) for a in accounts if a.get("role") == "doctor"]
+    nurses = [row(a, by_nurse) for a in accounts if a.get("role") == "nurse"]
     with_doctor = {i for s in by_doctor.values() for i in s}
     with_nurse = {i for s in by_nurse.values() for i in s}
     return {

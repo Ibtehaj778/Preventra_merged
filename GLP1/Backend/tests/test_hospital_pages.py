@@ -178,6 +178,99 @@ def test_assigning_takes_effect_at_once_and_never_crosses_hospitals(world):
     assert list(world["db"].patient_access.find({}, {"_id": 0})) == before
 
 
+# ------------------------------------------------------ several doctors
+@pytest.fixture()
+def second_doctor(world):
+    """A second doctor in hospital A, with a token; removed afterwards."""
+    import time
+    from fastapi.testclient import TestClient
+    from jose import jwt
+    users = world["store"][settings.shared_identity_db_name].users
+    did = str(users.insert_one({"email": "doc2@a.test", "name": "Dr Two", "role": "doctor",
+                                "status": "active", "hospital_id": "hosp-a",
+                                "app_access": ["glp1"]}).inserted_id)
+    token = jwt.encode({"sub": did, "exp": int(time.time()) + 3600},
+                       settings.shared_secret_key, algorithm="HS256")
+    c = TestClient(main.app, headers={"Authorization": f"Bearer {token}"}, raise_server_exceptions=False)
+    yield did, c
+    users.delete_one({"email": "doc2@a.test"})
+
+
+def team(world, idx):
+    admin = client(world, "admin@a.test")
+    rows = admin.get("/api/patients", params={"page_size": 100}).json()["patients"]
+    row = next(r for r in rows if r["patient_idx"] == idx)
+    return [d["email"] for d in row["doctors"]], [n["email"] for n in row["nurses"]]
+
+
+def test_a_patient_can_have_several_doctors(world, second_doctor):
+    doc2, doc2_client = second_doctor
+    doc = uid(world, "doc@a.test")
+    admin = client(world, "admin@a.test")
+
+    # #1 was stored the older way, with one assigned_doctor_id: adding keeps them.
+    assert admin.post("/api/care-team", json={"patient_ids": [0, 1], "add_doctor_ids": [doc2]}).status_code == 200
+    assert team(world, 1)[0] == ["doc@a.test", "doc2@a.test"]
+    assert listed(doc2_client.get("/api/patients")) == {0, 1}
+    assert listed(client(world, "doc@a.test").get("/api/patients")) == {0, 1}
+    staff = {d["email"]: d["patients"] for d in admin.get("/api/staff").json()["doctors"]}
+    assert staff == {"doc@a.test": 2, "doc2@a.test": 2}
+
+    # Taking the first doctor off one patient leaves the other in charge.
+    assert admin.post("/api/care-team", json={"patient_ids": [0], "remove_doctor_ids": [doc]}).status_code == 200
+    assert team(world, 0)[0] == ["doc2@a.test"]
+    assert listed(client(world, "doc@a.test").get("/api/patients")) == {1}
+    rec = world["db"].patient_access.find_one({"patient_idx": 0})
+    assert rec["assigned_doctor_ids"] == [doc2] and rec["assigned_doctor_id"] == doc2
+
+    # Setting the whole list; an empty list leaves the patient with no doctor.
+    assert admin.post("/api/care-team", json={"patient_ids": [0], "doctor_ids": [doc, doc2]}).status_code == 200
+    assert team(world, 0)[0] == ["doc@a.test", "doc2@a.test"]
+    assert admin.post("/api/care-team", json={"patient_ids": [0], "doctor_ids": []}).status_code == 200
+    assert team(world, 0)[0] == []
+    assert 0 in listed(admin.get("/api/patients", params={"unassigned": "doctor"}))
+    assert listed(admin.get("/api/patients", params={"doctor": doc2})) == {1}
+
+
+def test_nurses_can_be_added_and_removed_in_bulk(world):
+    nurse = uid(world, "nurse@a.test")
+    admin = client(world, "admin@a.test")
+    assert admin.post("/api/care-team", json={"patient_ids": [0, 1, 2],
+                                              "remove_nurse_ids": [nurse]}).status_code == 200
+    assert listed(client(world, "nurse@a.test").get("/api/patients")) == set()
+    assert admin.post("/api/care-team", json={"patient_ids": [3], "add_nurse_ids": [nurse]}).status_code == 200
+    assert listed(client(world, "nurse@a.test").get("/api/patients")) == {3}
+
+
+def test_someone_who_left_can_be_removed_but_not_added(world, second_doctor):
+    doc2, _ = second_doctor
+    admin = client(world, "admin@a.test")
+    assert admin.post("/api/care-team", json={"patient_ids": [2], "add_doctor_ids": [doc2]}).status_code == 200
+    world["store"][settings.shared_identity_db_name].users.update_one(
+        {"email": "doc2@a.test"}, {"$set": {"status": "suspended"}})
+    assert admin.post("/api/care-team", json={"patient_ids": [3], "add_doctor_ids": [doc2]}).status_code == 404
+    assert admin.post("/api/care-team", json={"patient_ids": [2], "remove_doctor_ids": [doc2]}).status_code == 200
+    assert team(world, 2)[0] == []
+
+
+@pytest.mark.parametrize("body", [
+    {"patient_ids": [0], "doctor_ids": [], "add_doctor_ids": ["x"]},     # set and edit at once
+    {"patient_ids": [0], "add_nurse_ids": ["x"], "remove_nurse_ids": ["x"]},
+    {"patient_ids": [0], "doctor_id": "", "doctor_ids": []},
+    {"patient_ids": [0]},                                                 # nothing to change
+    {"patient_ids": [0], "doctor_ids": [f"{i:024x}" for i in range(21)]},  # too many
+])
+def test_unclear_requests_change_nothing(world, body):
+    before = list(world["db"].patient_access.find({}, {"_id": 0}))
+    assert client(world, "admin@a.test").post("/api/care-team", json=body).status_code == 422
+    assert list(world["db"].patient_access.find({}, {"_id": 0})) == before
+
+
+def test_staff_rows_carry_the_hospital_name(world):
+    rows = client(world, "ops@team.test").get("/api/staff").json()["doctors"]
+    assert all("hospital_name" in r for r in rows)
+
+
 @pytest.mark.parametrize("email", ["doc@a.test", "nurse@a.test", "claims@acme.test", "me@patient.test"])
 def test_only_admins_and_case_managers_assign(world, email):
     r = client(world, email).post("/api/care-team", json={"patient_ids": [0], "doctor_id": ""})

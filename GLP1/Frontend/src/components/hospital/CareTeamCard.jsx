@@ -10,14 +10,15 @@ import CareTeamDialog from './CareTeamDialog';
 export default function CareTeamCard({ team, patientIdx, canAssign, onChanged }) {
   const [editing, setEditing] = useState(false);
   if (!team) return null;
-  const { doctor, nurses = [], insurer, pharmacy } = team;
+  const { nurses = [], insurer, pharmacy } = team;
+  const doctors = team.doctors || (team.doctor ? [team.doctor] : []);
   const item = (Icon, label, value, missing) => (
     <div>
       <div className="flex items-center gap-1.5 text-[11px] text-gray-400 uppercase tracking-wider font-medium">
         <Icon size={13} /> {label}
       </div>
       <div className="text-sm font-semibold mt-0.5" style={{ color: value ? '#2D3748' : missing ? '#C62828' : '#A0AEC0' }}>
-        {value || (missing ? `No ${label.toLowerCase()} assigned` : 'None on file')}
+        {value || (missing ? `No ${label.toLowerCase().replace(/s$/, '')} assigned` : 'None on file')}
       </div>
     </div>
   );
@@ -38,8 +39,8 @@ export default function CareTeamCard({ team, patientIdx, canAssign, onChanged })
         )}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        {item(Stethoscope, 'Doctor', doctor?.name, true)}
-        {item(HeartPulse, 'Nurse', nurses.map((n) => n.name).join(', '), true)}
+        {item(Stethoscope, doctors.length > 1 ? 'Doctors' : 'Doctor', doctors.map((d) => d.name).join(', '), true)}
+        {item(HeartPulse, nurses.length > 1 ? 'Nurses' : 'Nurse', nurses.map((n) => n.name).join(', '), true)}
         {item(Building, 'Insurer', insurer?.name, false)}
         {pharmacy !== undefined && item(Store, 'Pharmacy', pharmacy, false)}
       </div>
@@ -47,7 +48,7 @@ export default function CareTeamCard({ team, patientIdx, canAssign, onChanged })
         <CareTeamDialog
           patientIdxs={[patientIdx]}
           hospitalId={team.hospital_id}
-          current={{ doctorId: doctor?.id || '', nurseIds: nurses.map((n) => n.id) }}
+          current={{ doctorIds: doctors.map((d) => d.id), nurseIds: nurses.map((n) => n.id) }}
           onClose={() => setEditing(false)}
           onSaved={() => { setEditing(false); onChanged?.(); }}
         />

@@ -8,6 +8,10 @@ import { SEGMENT_SHORT, SEGMENT_COLORS } from '../data/mockData';
 import { usePatients } from '../hooks/usePatients';
 import { useRole } from '../context/RoleContext';
 
+// A patient's doctors. Rows from before a patient could have several carry
+// only `doctor`.
+const doctorsOf = (p) => p.doctors || (p.doctor ? [p.doctor] : []);
+
 const PAGE_SIZE = 20;
 const MOLECULES = ['All', 'SEMAGLUTIDE', 'TIRZEPATIDE', 'LIRAGLUTIDE', 'DULAGLUTIDE'];
 const SEGMENTS  = ['All', ...SEGMENT_SHORT];
@@ -217,9 +221,9 @@ export default function PatientRiskPanel() {
     if (molFilter !== 'All') d = d.filter(p => p.assigned_molecule === molFilter);
     if (predFilter !== 'All') d = d.filter(p => p.prediction === predFilter);
     if (financialOnly)     d = d.filter(p => isFinancial(p.driver_1 || ''));
-    if (care.doctor)       d = d.filter(p => p.doctor?.id === care.doctor);
+    if (care.doctor)       d = d.filter(p => doctorsOf(p).some(x => x.id === care.doctor));
     if (care.nurse)        d = d.filter(p => (p.nurses || []).some(n => n.id === care.nurse));
-    if (care.unassigned === 'doctor') d = d.filter(p => !p.doctor);
+    if (care.unassigned === 'doctor') d = d.filter(p => !doctorsOf(p).length);
     if (care.unassigned === 'nurse')  d = d.filter(p => !(p.nurses || []).length);
     d = d.filter(p => p.dropout_prob * 100 >= minRisk);
     d.sort((a, b) => {
@@ -236,7 +240,7 @@ export default function PatientRiskPanel() {
   const financial = filtered.filter(p => isFinancial(p.driver_1 || '')).length;
 
   // The care-team filter, named rather than shown as an id.
-  const careLabel = care.doctor ? `Doctor: ${patients.find(p => p.doctor?.id === care.doctor)?.doctor?.name || 'selected'}`
+  const careLabel = care.doctor ? `Doctor: ${patients.flatMap(doctorsOf).find(x => x.id === care.doctor)?.name || 'selected'}`
     : care.nurse ? `Nurse: ${patients.flatMap(p => p.nurses || []).find(n => n.id === care.nurse)?.name || 'selected'}`
     : care.unassigned === 'doctor' ? 'No doctor assigned'
     : care.unassigned === 'nurse' ? 'No nurse assigned' : null;
@@ -305,8 +309,9 @@ export default function PatientRiskPanel() {
       case 'care_team':
         return (
           <div style={{ maxWidth: 180 }}>
-            <div className="text-xs truncate" style={{ color: p.doctor ? '#2D3748' : '#C62828' }}>
-              {p.doctor ? p.doctor.name : 'No doctor'}
+            <div className="text-xs truncate" style={{ color: doctorsOf(p).length ? '#2D3748' : '#C62828' }}
+                 title={doctorsOf(p).map(x => x.name).join(', ')}>
+              {doctorsOf(p).length ? doctorsOf(p).map(x => x.name).join(', ') : 'No doctor'}
             </div>
             <div className="text-[10px] text-gray-400 truncate mt-0.5">
               {(p.nurses || []).length ? p.nurses.map(n => n.name).join(', ') : 'No nurse'}
@@ -660,7 +665,7 @@ export default function PatientRiskPanel() {
           hospitalId={selectionHospital}
           current={assigning.length === 1 ? (() => {
             const row = patients.find(p => p.patient_idx === assigning[0]);
-            return { doctorId: row?.doctor?.id || '', nurseIds: (row?.nurses || []).map(n => n.id) };
+            return { doctorIds: doctorsOf(row || {}).map(x => x.id), nurseIds: (row?.nurses || []).map(n => n.id) };
           })() : undefined}
           onClose={() => setAssigning(null)}
           onSaved={() => { setAssigning(null); setSelected([]); reload(); }}

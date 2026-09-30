@@ -7,7 +7,10 @@ data reload does not orphan anyone:
 
     hospital_id         the hospital the patient belongs to
     insurer_id          who pays for them
-    assigned_doctor_id  shared_identity user id of their doctor
+    assigned_doctor_ids shared_identity user ids of their doctors
+    assigned_doctor_id  the first of them - the field records had before a
+                        patient could have several doctors, still read (see
+                        doctor_ids) and kept in step on every change
     assigned_nurse_ids  shared_identity user ids of their nurses
     patient_account_id  the patient's own login, if they have one
     pharmacy            where they collect their prescription
@@ -75,6 +78,21 @@ CLINICAL_FIELDS = frozenset({
 })
 
 
+def doctor_ids(record: dict) -> list:
+    """A patient_access record's doctors: the list, plus the single doctor an
+    older record (or a script that fills in `assigned_doctor_id`) holds."""
+    ids = [str(d) for d in (record.get("assigned_doctor_ids") or []) if d]
+    legacy = record.get("assigned_doctor_id")
+    if legacy and str(legacy) not in ids:
+        ids.insert(0, str(legacy))
+    return ids
+
+
+def doctor_query(doctor_id: str) -> dict:
+    """patient_access records that list this doctor, in either field."""
+    return {"$or": [{"assigned_doctor_ids": doctor_id}, {"assigned_doctor_id": doctor_id}]}
+
+
 def needs_reason(user: dict) -> bool:
     return user["role"] in REASON_ROLES
 
@@ -112,7 +130,7 @@ async def patient_scope(user: dict) -> Optional[list]:
     elif role in ("hospital_admin", "case_manager"):
         query = {"hospital_id": hospital} if hospital else None
     elif role == "doctor":
-        query = {"hospital_id": hospital, "assigned_doctor_id": uid} if hospital else None
+        query = {"hospital_id": hospital, **doctor_query(uid)} if hospital else None
     elif role == "nurse":
         query = {"hospital_id": hospital, "assigned_nurse_ids": uid} if hospital else None
     elif role == "insurer":

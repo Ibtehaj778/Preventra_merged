@@ -30,15 +30,22 @@ async def get_staff(user: dict = Depends(require_role(*STAFF_ROLES)),
 
 
 class CareTeamRequest(BaseModel):
+    """Set a list, or add and remove people - see core/hospital.assign."""
     patient_ids: List[int]
-    doctor_id: Optional[str] = None
+    doctor_ids: Optional[List[str]] = None
+    add_doctor_ids: Optional[List[str]] = None
+    remove_doctor_ids: Optional[List[str]] = None
     nurse_ids: Optional[List[str]] = None
     add_nurse_ids: Optional[List[str]] = None
+    remove_nurse_ids: Optional[List[str]] = None
+    doctor_id: Optional[str] = None          # older one-doctor form
 
 
 @router.post("/care-team")
 async def set_care_team(req: CareTeamRequest, user: dict = Depends(require_role(*ASSIGN_ROLES)),
                         scope: Optional[list] = Depends(scope_of)):
-    """Assign a doctor and nurses to one or more patients, effective at once."""
+    """Change the doctors and nurses of one or more patients, effective at once."""
     return await hospital.assign(user, scope, req.patient_ids, doctor_id=req.doctor_id,
-                                 nurse_ids=req.nurse_ids, add_nurse_ids=req.add_nurse_ids)
+                                 doctor_ids_=req.doctor_ids, add_doctor_ids=req.add_doctor_ids,
+                                 remove_doctor_ids=req.remove_doctor_ids, nurse_ids=req.nurse_ids,
+                                 add_nurse_ids=req.add_nurse_ids, remove_nurse_ids=req.remove_nurse_ids)

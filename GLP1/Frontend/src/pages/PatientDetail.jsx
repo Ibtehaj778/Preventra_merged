@@ -6,6 +6,7 @@ import { SEGMENT_COLORS, SEGMENT_LABELS } from '../data/mockData';
 import { usePatientRecord } from '../hooks/usePatient';
 import { useSurvival } from '../hooks/useSurvival';
 import { useRole } from '../context/RoleContext';
+import { usePatients } from '../hooks/usePatients';
 import CareTeamCard from '../components/hospital/CareTeamCard';
 import ClinicalGate from '../components/hospital/ClinicalGate';
 
@@ -142,6 +143,8 @@ export default function PatientDetail() {
   const navigate = useNavigate();
   const { isCostView, isPatient, canAssign } = useRole();
   const { summary, data: patientData, loading: patientLoading, reload } = usePatientRecord(id);
+  const patientList = usePatients();
+  const careTeamChanged = () => { reload(); patientList?.reload(); };
   const { data: survivalData } = useSurvival();
 
   const backButton = !isPatient && (
@@ -184,7 +187,7 @@ export default function PatientDetail() {
             </span>
           </div>
         </div>
-        <CareTeamCard team={summary} patientIdx={summary.patient_idx} canAssign={summary.can_assign} onChanged={reload} />
+        <CareTeamCard team={summary} patientIdx={summary.patient_idx} canAssign={summary.can_assign} onChanged={careTeamChanged} />
         <ClinicalGate patientIdx={summary.patient_idx} reasons={summary.reasons} onOpened={reload} />
       </div>
     );
@@ -298,7 +301,7 @@ export default function PatientDetail() {
       {/* ── Care team, insurer and pharmacy ──────────────────────── */}
       <div className="mb-6">
         <CareTeamCard team={patient} patientIdx={patient.patient_idx}
-          canAssign={canAssign && !isPatient} onChanged={reload} />
+          canAssign={canAssign && !isPatient} onChanged={careTeamChanged} />
       </div>
 
       {/* ── Top 2-col grid: profile/financial/rec  |  drivers ──────── */}

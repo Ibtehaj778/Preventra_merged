@@ -66,12 +66,7 @@ export default function Settings() {
 function AboutModel({ info }) {
   const rows = [
     ['What it does',
-      'Estimates each patient’s chance of stopping their GLP-1 therapy within 6 months, and names the main reasons behind that estimate.'],
-    ['What it learned from',
-      'Patient profiles built from US public health data: the NHANES health survey, MEPS drug costs, CMS Medicare Part D prescribing, FDA side-effect reports and published GLP-1 trials.'],
-    ['How reliable it is',
-      `Tested on ${info.testSize.toLocaleString()} patients it had not seen during training: given one patient who stopped and one who stayed, it ranks the one who stopped as higher risk ${Math.round(info.auc * 100)}% of the time.`],
-    ['Last updated', info.lastTrained],
+      'Estimates each patient\u2019s chance of stopping their GLP-1 therapy within 6 months, and names the main reasons behind that estimate.'],
   ];
   return (
     <div className="card p-6">
@@ -92,10 +87,6 @@ function AboutModel({ info }) {
           </div>
         ))}
       </dl>
-      <p className="mt-3 rounded-lg px-3 py-2 text-xs leading-relaxed" style={{ background: '#FFF8E1', color: '#8D6E00' }}>
-        <b>Demonstration data.</b> The patients shown today are a simulated dataset, not real patients.
-        Before live use, the model is checked against your own patients&rsquo; refill history.
-      </p>
     </div>
   );
 }

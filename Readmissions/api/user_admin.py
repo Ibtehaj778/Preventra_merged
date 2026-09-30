@@ -219,7 +219,7 @@ def list_users(db, actor: dict, hospital_id: Optional[str] = None,
     if actor["role"] == "hospital_admin":
         # Its own staff and patients, plus the sign-ups asking to join it.
         query["$or"] = [
-            {"hospital_id": actor["hospital_id"]},
+            {"hospital_id": actor["hospital_id"], "role": {"$in": [*ASSIGNABLE["hospital_admin"], "hospital_admin"]}},
             {"status": "pending", "hospital_id": None, "insurer_id": None,
              "requested_hospital_id": actor["hospital_id"] or "__none__",
              "role": {"$in": list(ASSIGNABLE["hospital_admin"])}},

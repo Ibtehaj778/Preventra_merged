@@ -158,7 +158,9 @@ export default function UserManagement({ authBaseUrl, getToken, me }) {
             <select className={input} value={filter.role}
                     onChange={(e) => setFilter({ ...filter, role: e.target.value })}>
               <option value="">Any role</option>
-              {Object.entries(ROLE_LABELS).filter(([r]) => r !== 'superadmin').map(([r, label]) => (
+                            {Object.entries(ROLE_LABELS)
+                .filter(([r]) => r !== 'superadmin' && (isSuper || r === 'hospital_admin' || assignable.includes(r)))
+                .map(([r, label]) => (
                 <option key={r} value={r}>{label}</option>))}
             </select>
           </div>

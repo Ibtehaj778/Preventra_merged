@@ -343,7 +343,12 @@ def test_a_patient_login_lists_the_insurer_of_its_patient_record(db, world):
     assert listed["doc@a.org"]["patient_insurer_id"] is None
     assert listed["pat@a.org"]["insurer_id"] is None                    # the login itself is unchanged
 
-
+def test_a_hospital_admin_never_lists_insurer_accounts(db, world):
+    # Even one that has the hospital on it by mistake.
+    account(db, "claims@medicare.test", "insurer", "demo-hospital-a", insurer_id="medicare")
+    assert "claims@medicare.test" not in {u["email"] for u in ua.list_users(db, world["admin_a"])}
+    assert "claims@medicare.test" in {u["email"] for u in ua.list_users(db, world["sa"])}
+    
 def test_listed_accounts_never_carry_a_password_hash(db, world):
     assert all("password_hash" not in u for u in ua.list_users(db, world["sa"]))
 

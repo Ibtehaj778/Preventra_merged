@@ -257,3 +257,17 @@ def test_the_care_plan_follows_the_trend_not_just_the_band(main, world):
         "current_score": 70, "monitoring_status": "deteriorating"}})
     plan = me.get(f"/api/patients/{A4}").json()["care_plan"]
     assert plan["decision"] == "escalate" and any("48 hours" in a for a in plan["actions"])
+
+
+def test_a_red_flag_in_the_latest_week_means_action_required(main, world):
+    db = world["db"]
+    db["weekly_monitoring"].delete_many({"patient_id": A4})
+    db["weekly_monitoring"].insert_many([
+        {"patient_id": A4, "week_number": 0, "risk_score": 60, "risk_band": "High"},
+        {"patient_id": A4, "week_number": 1, "risk_score": 70, "risk_band": "High"},
+        {"patient_id": A4, "week_number": 2, "risk_score": 62, "risk_band": "High",
+         "red_flags": ["spo2"]}])
+    body = as_user(main, world, "me@patient.test").get(f"/api/patients/{A4}/trend").json()
+    assert body["monitoring_status"] == "action_required"
+    assert body["weeks"][-1]["red_flags"] == ["oxygen saturation below 90%"]
+    assert body["weeks"][0]["red_flags"] == []

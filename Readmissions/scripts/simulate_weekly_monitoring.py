@@ -96,11 +96,11 @@ from models.mimic_drivers import (inner_estimator, load_bundle,  # noqa: E402
 # The rule set lives in models/monitoring_rules so this script and the API's
 # patient self-logging endpoint score identical observations identically.
 from models.monitoring_rules import (CARRY, SCORE_CEIL,  # noqa: E402,F401
-                                     SCORE_FLOOR, SIGNAL_RULES, score_week,
+                                     SCORE_FLOOR, SIGNAL_RULES, red_flags, score_week,
                                      variant_for)
 # The patient's clinical group decides which signals matter for them, so it is
 # resolved once per patient here and carried on every weekly document.
-from models.icd_groups import classify  # noqa: E402
+from models.icd_groups import classify, monitoring_groups  # noqa: E402
 from models.monitoring_rules import GROUP_SIGNALS  # noqa: E402
 from models.discharge_baseline import derive_baseline  # noqa: E402
 
@@ -171,9 +171,22 @@ def observe_disease_signals(group: str, drift: float, rng: np.random.Generator) 
     return out
 
 
+# How strongly a condition shows up in the VITALS as it worsens. Mental health
+# deteriorates through contact, adherence and refills - its vitals stay near
+# normal - so a patient whose only condition is psychiatric must not drift into
+# low saturations or a racing pulse. Every other condition, and any diagnosis
+# that matched no group, keeps the full vital drift. A patient takes the
+# strongest relevance among their conditions.
+VITAL_RELEVANCE = {"mental_health": 0.1}
+
+
+def vital_relevance(groups) -> float:
+    return max((VITAL_RELEVANCE.get(g, 1.0) for g in (groups or ["general"])), default=1.0)
+
+
 def observe_week(week: int, n_weeks: int, deteriorating: bool,
                  severity: float, rng: np.random.Generator,
-                 group: str = "general") -> dict:
+                 group: str = "general", groups=None) -> dict:
     """
     Generate one week of monitoring observations.
 
@@ -185,11 +198,15 @@ def observe_week(week: int, n_weeks: int, deteriorating: bool,
 
     if deteriorating:
         drift = severity * t
-        weight = rng.normal(0.9 + 2.4 * drift, 0.7)
+        # Vitals follow the patient's conditions; adherence, refills and
+        # follow-up deteriorate for everyone. The draws stay in the same order,
+        # so patients whose vitals keep full relevance get identical data.
+        vd = drift * vital_relevance(groups or [group])
+        weight = rng.normal(0.9 + 2.4 * vd, 0.7)
         adherence = float(np.clip(rng.normal(88 - 45 * drift, 9), 5, 100))
-        sbp = rng.normal(138 + 26 * drift, 12)
-        hr = rng.normal(82 + 26 * drift, 9)
-        spo2 = rng.normal(96 - 6.0 * drift, 1.5)
+        sbp = rng.normal(138 + 26 * vd, 12)
+        hr = rng.normal(82 + 26 * vd, 9)
+        spo2 = rng.normal(96 - 6.0 * vd, 1.5)
         refill_p = [0.10 + 0.45 * drift, 0.15 + 0.15 * drift, 0.55, 0.20]
         follow_p = [0.10 + 0.40 * drift, 0.55, 0.35]
     else:
@@ -357,6 +374,10 @@ def main():
         base = float(baseline[i])
         rng = np.random.default_rng(a.seed + i * 97)
         grp = groups[i]
+        row = wl.iloc[i]
+        conditions = monitoring_groups(row.get("primary_icd_code", "") or "",
+                                       row.get("primary_diagnosis", "") or "",
+                                       row.get("secondary_diagnoses") or [])
         # The patient's own reference point. Every relative reading below is
         # measured against this rather than against a population number.
         baseline_record = derive_baseline(pid, grp["group"])
@@ -386,13 +407,15 @@ def main():
             contacted = rng.random() > NO_CONTACT_RATE
             if contacted or prev_obs is None:
                 obs = observe_week(wk, a.weeks, bool(deteriorating[i]),
-                                   float(severity[i]), rng, group=grp["group"])
+                                   float(severity[i]), rng, group=grp["group"],
+                                   groups=conditions)
                 # Phrasing varies per patient-week so four consecutive cards do
                 # not repeat one sentence; the POINTS are variant-independent,
                 # so the scores this writes are identical either way.
                 score, adj, contribs = score_week(base, obs, CARRY * prev_adj,
                                                   variant=variant_for(pid, wk),
-                                                  group=grp["group"])
+                                                  group=grp["group"], groups=conditions,
+                                                  prev_score=prev_score)
                 drivers = [c[1] for c in contribs[:3]]
                 prev_obs, prev_drv, prev_adj = obs, drivers, adj
             else:
@@ -409,6 +432,10 @@ def main():
                 "observed": bool(contacted),
                 "driver_1": drivers[0], "driver_2": drivers[1], "driver_3": drivers[2],
                 "monitoring": obs,
+                # Readings that need assessing today whatever else improved;
+                # they make the week "Action required" (api/main.py).
+                "red_flags": red_flags(obs),
+                "monitoring_groups": conditions,
                 "model_version": MODEL_VERSION, "source": SOURCE,
                 "scored_by": "monitoring_rules",
                 "clinical_group": grp["group"],

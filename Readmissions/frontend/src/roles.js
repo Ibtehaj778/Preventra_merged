@@ -14,6 +14,9 @@ export const REASON_ROLES = ['hospital_admin', 'insurer'];
 // The clinician console is a doctor's alert inbox; the roles that must give a
 // reason per patient cannot read a whole inbox of clinical alerts.
 export const CONSOLE_ROLES = ['superadmin', 'doctor', 'case_manager'];
+// Who is told when their patients' risk goes up (api/access.py watch_risk).
+// A doctor or nurse hears about their own patients only.
+export const WATCH_ROLES = ['superadmin', 'doctor', 'nurse', 'case_manager'];
 
 export const ROLE_LABELS = {
   superadmin: 'Superadmin', hospital_admin: 'Hospital admin', doctor: 'Doctor', nurse: 'Nurse',

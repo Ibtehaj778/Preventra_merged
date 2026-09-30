@@ -51,6 +51,7 @@ def client(monkeypatch):
     ids = {"n1": nurse("n1@yh.test", HID), "n2": nurse("n2@yh.test", HID),
            "n_other": nurse("n@other.test", OTHER)}
     monkeypatch.setattr(auth, "BCRYPT_ROUNDS", 4)
+    monkeypatch.setattr(auth, "SHARED_SECRET_KEY", "test-secret-not-the-real-one")
     for i in (1, 2):                                  # what seed_hospital.py made
         ids[f"patient{i}"] = str(users.insert_one(
             {"email": f"patient{i}@{HID}.test", "role": "patient", "status": "active",

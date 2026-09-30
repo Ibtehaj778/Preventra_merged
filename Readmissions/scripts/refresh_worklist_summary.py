@@ -72,6 +72,7 @@ def build_summaries() -> dict:
             "scores": {"$push": "$risk_score"},
             "bands": {"$push": "$risk_band"},
             "groups": {"$push": "$clinical_group"},
+            "flags": {"$push": "$red_flags"},
         }},
     ]
     out = {}
@@ -91,7 +92,10 @@ def build_summaries() -> dict:
             "current_score": scores[-1],
             "current_band": bands[-1] if bands else None,
             "trend_delta": round(scores[-1] - scores[0], 1),
-            "monitoring_status": _classify_trend_status(scores, gaps),
+            # A red flag in the latest week overrides the trend: see
+            # models/monitoring_rules.RED_FLAGS.
+            "monitoring_status": ("action_required" if (doc.get("flags") or [None])[-1]
+                                  else _classify_trend_status(scores, gaps)),
             "weeks_tracked": len(scores),
         }
     return out

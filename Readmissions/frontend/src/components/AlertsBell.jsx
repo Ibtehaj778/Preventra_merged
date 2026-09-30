@@ -1,13 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAlerts, acknowledgeAlert } from '../api';
+import { getAlerts, acknowledgeAlert, getRisingRisk, markRiskSeen } from '../api';
 import { Bell, Check, Loader2 } from 'lucide-react';
+import { can, WATCH_ROLES } from '../roles';
+import { RisingRiskRow } from './shared/RisingRiskList';
+
+// How many unopened rising patients the dropdown lists; the rest are on the
+// Patients page's "Needs attention" panel.
+const RISING_IN_BELL = 8;
 
 const POLL_INTERVAL_MS = 30000;
 
 export default function AlertsBell() {
   const navigate = useNavigate();
   const [alerts, setAlerts] = useState([]);
+  // The caller's own patients whose latest week got worse (api/risk_watch.py).
+  const [rising, setRising] = useState(null);
+  const watches = can(WATCH_ROLES);
   const [open, setOpen] = useState(false);
   const [acknowledgingId, setAcknowledgingId] = useState(null);
   const containerRef = useRef(null);
@@ -16,12 +25,31 @@ export default function AlertsBell() {
     getAlerts()
       .then((data) => setAlerts(Array.isArray(data) ? data : []))
       .catch(() => {});
+    if (can(WATCH_ROLES)) getRisingRisk(50).then(setRising).catch(() => {});
+  };
+
+  const unseen = (rising?.patients || []).filter((p) => !p.seen);
+  const count = alerts.length + (rising?.unseen || 0);
+
+  const openRising = (item) => {
+    setOpen(false);
+    markRiskSeen(item.patient_id, item.week_number).catch(() => {});
+    setRising((r) => r && {
+      ...r, unseen: Math.max(0, r.unseen - 1),
+      patients: r.patients.map((p) => (p.patient_id === item.patient_id ? { ...p, seen: true } : p)),
+    });
+    navigate(`/patients/${encodeURIComponent(item.patient_id)}/trend`);
   };
 
   useEffect(() => {
     load();
     const interval = setInterval(load, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    // The Patients page's "Needs attention" panel marks patients seen too.
+    window.addEventListener('rising-risk-changed', load);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('rising-risk-changed', load);
+    };
   }, []);
 
   useEffect(() => {
@@ -60,20 +88,44 @@ export default function AlertsBell() {
         aria-label="Alerts"
       >
         <Bell size={20} />
-        {alerts.length > 0 && (
+        {count > 0 && (
           <span className="absolute -top-0.5 -right-0.5 bg-risk-high text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-            {alerts.length > 9 ? '9+' : alerts.length}
+            {count > 9 ? '9+' : count}
           </span>
         )}
       </button>
 
       {open && (
         <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl border border-gray-200 shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-            <h3 className="font-semibold text-gray-800 text-sm">Risk Increase Alerts</h3>
-          </div>
-          <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
-            {alerts.length === 0 && (
+          <div className="max-h-[28rem] overflow-y-auto divide-y divide-gray-100">
+            {watches && (
+              <>
+                <div className="px-4 py-3 bg-gray-50">
+                  <h3 className="font-semibold text-gray-800 text-sm">Your patients' risk went up</h3>
+                  <p className="text-xs text-gray-500">Latest monitoring week: a red flag, a rise of 5+ points, or a move up a band.</p>
+                </div>
+                {unseen.length === 0 && (
+                  <p className="text-sm text-gray-400 italic px-4 py-4 text-center">
+                    {rising?.total ? 'All opened. They stay listed on the Patients page.' : 'None of your patients got worse this week.'}
+                  </p>
+                )}
+                {unseen.slice(0, RISING_IN_BELL).map((item) => (
+                  <RisingRiskRow key={item.patient_id} item={item} onOpen={openRising} compact />
+                ))}
+                {unseen.length > RISING_IN_BELL && (
+                  <button type="button" onClick={() => { setOpen(false); navigate('/patients'); }}
+                    className="w-full px-4 py-2 text-sm font-medium text-ns-navy hover:bg-gray-50">
+                    {unseen.length - RISING_IN_BELL} more on the Patients page
+                  </button>
+                )}
+              </>
+            )}
+            {(alerts.length > 0 || !watches) && (
+              <div className="px-4 py-3 bg-gray-50">
+                <h3 className="font-semibold text-gray-800 text-sm">Score edits</h3>
+              </div>
+            )}
+            {alerts.length === 0 && !watches && (
               <p className="text-sm text-gray-400 italic px-4 py-6 text-center">No unacknowledged alerts.</p>
             )}
             {alerts.map((alert) => (

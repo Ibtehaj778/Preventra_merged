@@ -27,11 +27,12 @@ from api import user_admin
 from api import access
 from api import access_log
 from api import hospital
+from api import risk_watch
 from api.chatbot_service import answer_question
 from api.chatbot_queries import _patient_id_filter
 from api.gemini_insights import generate_roi_and_counterfactual, generate_week_narrative
 from models import early_warning
-from models.monitoring_rules import (CARRIED_FORWARD_SOURCE, CARRY, DISEASE_NEUTRAL,
+from models.monitoring_rules import (RED_FLAGS, CARRIED_FORWARD_SOURCE, CARRY, DISEASE_NEUTRAL,
                                      LABEL_TO_SIGNAL, MODEL_SOURCE, SIGNAL_RULES,
                                      score_week, signal_plan, signals_for,
                                      source_for, variant_for, week_sources)
@@ -1297,6 +1298,8 @@ def _weekly_trend_response(patient_id: str, docs: list) -> dict:
             "week_label": "Discharge" if wk == 0 else f"Wk {wk}",
             "risk_score": score,
             "risk_band": doc.get("risk_band", "Low"),
+            # Readings that need assessing today - see models/monitoring_rules.
+            "red_flags": [RED_FLAGS[k][1] for k in (doc.get("red_flags") or []) if k in RED_FLAGS],
             "delta": delta,
             "week_trend": week_trend,
             "days_after_discharge": int(doc.get("days_after_discharge", 7 * wk)),
@@ -1314,6 +1317,11 @@ def _weekly_trend_response(patient_id: str, docs: list) -> dict:
     scores = [w["risk_score"] for w in weeks]
     gaps = [w["days_since_prev"] for w in weeks]
     status = _classify_trend_status(scores, gaps)
+    # A red flag in the latest week (saturation below 90%, and so on - see
+    # models/monitoring_rules.RED_FLAGS) needs assessing today, whatever the
+    # trend says.
+    if docs and docs[-1].get("red_flags"):
+        status = "action_required"
     first, latest = (scores[0], scores[-1]) if scores else (0.0, 0.0)
 
     return {
@@ -2315,6 +2323,29 @@ def get_alerts(request: Request):
     for d in docs:
         d["id"] = str(d.pop("_id"))
     return docs
+
+
+@app.get("/api/rising-risk")
+def get_rising_risk(request: Request, limit: int = Query(50, ge=1, le=500)):
+    """The caller's patients whose latest monitoring week got worse: a red flag,
+    a rise of risk_watch.RISE_POINTS or more, or a move up a band. Urgent first.
+    A doctor or nurse gets their own patients only - the same scope as the list."""
+    _require(request, "watch_risk")
+    return risk_watch.watchlist(_view(request), db, request.state.user, limit=limit)
+
+
+class RiskSeenRequest(BaseModel):
+    week_number: int
+
+
+@app.post("/api/rising-risk/{patient_id}/seen")
+def mark_rising_risk_seen(patient_id: str, body: RiskSeenRequest, request: Request):
+    """Take one patient-week off the caller's bell. A newer week that rises
+    again brings the patient back."""
+    _require(request, "watch_risk")
+    access.require_patient(_scope(request), patient_id)
+    risk_watch.mark_seen(db, request.state.user, patient_id, body.week_number)
+    return {"patient_id": patient_id, "week_number": body.week_number, "seen": True}
 
 
 @app.post("/api/alerts/{alert_id}/acknowledge")

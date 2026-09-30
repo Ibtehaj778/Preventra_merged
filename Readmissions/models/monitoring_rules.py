@@ -1247,8 +1247,64 @@ def week_sources(patient_id: str, origin: str = "programme",
     return list(by_feed.values())
 
 
+# ---------------------------------------------------------------------------
+# Red flags
+# ---------------------------------------------------------------------------
+# Readings that need assessing the same day whatever the patient was admitted
+# for. The group weights above describe which signals are INFORMATIVE for a
+# condition - weight says little in mental health - but a saturation of 85% is
+# an emergency in anyone. So a red flag is exempt from down-weighting, adds at
+# least RED_FLAG_MIN_POINTS, and while one is present the score cannot fall
+# below the previous week's: an attended appointment must never make a patient
+# with a saturation of 85% look like they are recovering.
+#
+# Thresholds are standard early-warning cut-offs (NEWS2 red-score values and the
+# usual sepsis screen). Like the weights, they are written here to be argued with.
+
+RED_FLAGS = {
+    "spo2":          (lambda v: v < 90, "oxygen saturation below 90%"),
+    "sbp":           (lambda v: v < 90 or v >= 180, "systolic blood pressure below 90 or 180 and over"),
+    "heart_rate":    (lambda v: v >= 130, "heart rate 130 or over"),
+    "temperature_c": (lambda v: v >= 39.0, "temperature 39 C or over"),
+    "new_confusion": (lambda v: v == "yes", "new confusion"),
+}
+RED_FLAG_MIN_POINTS = 10.0
+
+
+def red_flags(obs: dict) -> list:
+    """The red-flag readings in one week's observations, as signal keys."""
+    out = []
+    for key, (test, _) in RED_FLAGS.items():
+        value = (obs or {}).get(key)
+        if value is None:
+            continue
+        try:
+            if test(value):
+                out.append(key)
+        except TypeError:
+            continue
+    return out
+
+
+def weights_for(groups) -> dict:
+    """Signal weights for a patient with SEVERAL conditions.
+
+    Each group's weights say how informative a signal is for that condition, so
+    a patient takes the strongest weight any of their conditions gives: bipolar
+    disorder alongside liver failure must not mute the oxygen saturation the
+    liver disease makes important. A group without an entry for a signal counts
+    it at the ordinary weight of 1.0, and "general" - a diagnosis that matched no
+    group - counts everything at 1.0.
+    """
+    groups = [g for g in (groups or []) if g] or ["general"]
+    merged: dict = {}
+    for key in set(SIGNAL_RULES) | set(DISEASE_SIGNALS):
+        merged[key] = max(profile_for(g)["weights"].get(key, 1.0) for g in groups)
+    return merged
+
+
 def score_week(baseline: float, obs: dict, carry: float, variant: int = 0,
-               group: str = "general") -> tuple:
+               group: str = "general", groups=None, prev_score=None) -> tuple:
     """
     Apply the monitoring rules to one week of observations.
 
@@ -1264,13 +1320,21 @@ def score_week(baseline: float, obs: dict, carry: float, variant: int = 0,
     and can override the wording so the card explains the finding in terms of
     the patient's condition. Passing "general" reproduces the ungrouped
     behaviour exactly.
+
+    `groups` is EVERY condition the patient has (models/icd_groups
+    .monitoring_groups), plan group first. Weights are merged across them - see
+    weights_for. Without it, only `group` counts, as before.
+
+    `prev_score` is last week's score. While a red flag is present the score
+    cannot fall below it - see RED_FLAGS.
     """
     profile = profile_for(group)
-    weights, overrides, phrasing_overrides = (profile["weights"], profile["rules"],
-                                              profile["phrasing"])
+    weights = weights_for(groups) if groups else profile["weights"]
+    overrides, phrasing_overrides = profile["rules"], profile["phrasing"]
+    flagged = set(red_flags(obs))
 
-    contributions = []
-    total = 0.0
+    contributions, flag_contribs = [], []
+    total = flag_total = 0.0
     for offset, (key, (label, fmt, default_rule)) in enumerate(signals_for(group).items()):
         if key not in obs:
             # A disease signal the caller did not supply. Scoring its neutral
@@ -1280,6 +1344,15 @@ def score_week(baseline: float, obs: dict, carry: float, variant: int = 0,
         value = obs[key]
         rule = overrides.get(key, default_rule)
         points, branch, phrasings = rule(value)
+
+        if key in flagged:
+            # Never down-weighted, never normalised away, and big enough to
+            # matter: see RED_FLAGS.
+            points = round(max(points * max(weights.get(key, 1.0), 1.0), RED_FLAG_MIN_POINTS), 2)
+            why = phrasings[(variant + offset) % len(phrasings)] if not isinstance(phrasings, str) else phrasings
+            flag_total += points
+            flag_contribs.append((points, f"{label}: {fmt(value)} (red flag - {why})"))
+            continue
 
         # Scale, but never flip a sign: a weight of 0 silences a signal, it does
         # not turn a warning into reassurance.
@@ -1303,9 +1376,13 @@ def score_week(baseline: float, obs: dict, carry: float, variant: int = 0,
         factor = normalised / total
         contributions = [(round(p * factor, 2), d) for p, d in contributions]
 
-    score = float(np.clip(baseline + normalised + carry, SCORE_FLOOR, SCORE_CEIL))
+    score = float(np.clip(baseline + normalised + flag_total + carry, SCORE_FLOOR, SCORE_CEIL))
+    if flagged and prev_score is not None:
+        score = max(score, float(prev_score))
     contributions.sort(key=lambda c: abs(c[0]), reverse=True)
-    return round(score, 1), normalised, contributions
+    # Red flags lead the card: they are what someone must act on today.
+    flag_contribs.sort(key=lambda c: c[0], reverse=True)
+    return round(score, 1), normalised + flag_total, flag_contribs + contributions
 
 
 def variant_for(patient_id: str, week_number: int) -> int:

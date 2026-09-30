@@ -327,3 +327,24 @@ def classify_all(primary_code: str = "", primary_diagnosis: str = "",
     return [{"group": k, "label": GROUP_LABELS[k], "confidence": c,
              "matched_on": m, "evidence": e}
             for _, _, k, c, m, e in sorted(best.values(), key=lambda x: (x[0], x[1]))]
+
+
+def monitoring_groups(primary_code: str = "", primary_diagnosis: str = "",
+                      secondary_diagnoses: Optional[list] = None) -> list:
+    """
+    The conditions that shape a patient's weekly monitoring: every group their
+    diagnoses match, plan group first, plus "general" when any recorded
+    diagnosis matched NO group.
+
+    The "general" entry matters. A patient admitted with liver failure whose
+    only matched diagnosis is bipolar disorder would otherwise be monitored as
+    a mental health patient alone, with their vitals muted - the liver disease
+    is real even though no group names it, and it makes vitals matter.
+    """
+    keys = [m["group"] for m in classify_all(primary_code, primary_diagnosis, secondary_diagnoses)]
+    unmatched = bool((primary_code or primary_diagnosis)
+                     and not (_match_code(primary_code) or _match_title(primary_diagnosis)))
+    unmatched = unmatched or any(t and not _match_title(t) for t in (secondary_diagnoses or []))
+    if unmatched or not keys:
+        keys.append("general")
+    return keys

@@ -71,6 +71,9 @@ ACTIONS = {
     # once, so it is for the care team, not for the roles that must give a
     # reason per patient.
     "read_inboxes":   ("superadmin", "doctor", "nurse", "case_manager"),
+    # The rising-risk watchlist (api/risk_watch.py): the care team's own
+    # patients whose latest week got worse. Clinical, so not for reason roles.
+    "watch_risk":     ("superadmin", "doctor", "nurse", "case_manager"),
 }
 
 # ------------------------------------------------ overview and clinical layer

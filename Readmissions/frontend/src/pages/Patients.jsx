@@ -4,8 +4,9 @@ import { X } from 'lucide-react';
 import FilterBar from '../components/dashboard/FilterBar';
 import PatientWorklist from '../components/dashboard/PatientWorklist';
 import PatientDetailPanel from '../components/dashboard/PatientDetailPanel';
+import RisingRiskPanel from '../components/dashboard/RisingRiskPanel';
 import { getStaff } from '../api';
-import { can, STAFF_ROLES } from '../roles';
+import { can, STAFF_ROLES, WATCH_ROLES } from '../roles';
 
 /**
  * Who are my patients? The same page for every role; the backend decides whose
@@ -49,6 +50,10 @@ export default function Patients() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto relative">
+      {/* A doctor's or nurse's own patients who got worse, above everything
+          else on their list. Not on a care-team drill-down, which is someone
+          else's list. */}
+      {can(WATCH_ROLES) && !careFilter && <RisingRiskPanel />}
       <FilterBar />
       {careFilter && (
         <div className="mb-4 -mt-2 flex items-center gap-2 text-sm">

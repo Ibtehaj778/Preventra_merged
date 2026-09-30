@@ -312,6 +312,19 @@ const RealAPI = {
 
   acknowledgeAlert: (alertId) =>
     apiFetch(`/api/alerts/${alertId}/acknowledge`, { method: 'POST' }),
+
+  /**
+   * The caller's patients whose latest monitoring week got worse (red flag,
+   * a rise of 5+ points, or a move up a band), most serious first.
+   */
+  getRisingRisk: (limit = 50) => apiFetch(`/api/rising-risk?limit=${limit}`),
+
+  markRiskSeen: (patientId, weekNumber) =>
+    apiFetch(`/api/rising-risk/${encodeURIComponent(patientId)}/seen`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ week_number: weekNumber }),
+    }),
 };
 
 // ─── Exports ───────────────────────────────────────────────────────────────
@@ -416,6 +429,14 @@ export const commitPatientUpdate = USE_MOCK
 export const getAlerts = USE_MOCK
   ? () => Promise.resolve([])
   : RealAPI.getAlerts;
+
+// Live data only: an invented "your patient is getting worse" would be
+// indistinguishable from a real one.
+export const getRisingRisk = USE_MOCK
+  ? () => Promise.resolve({ total: 0, urgent: 0, unseen: 0, patients: [] })
+  : RealAPI.getRisingRisk;
+
+export const markRiskSeen = USE_MOCK ? () => Promise.resolve(null) : RealAPI.markRiskSeen;
 
 export const acknowledgeAlert = USE_MOCK
   ? () => Promise.reject(new Error(UPDATE_MOCK_ERROR))

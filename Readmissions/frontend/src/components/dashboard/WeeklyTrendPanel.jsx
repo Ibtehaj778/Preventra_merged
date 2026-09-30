@@ -169,6 +169,13 @@ function WeekCard({ week, patientId, weekly, seriesDiagnosis, group, groupFocus 
         <span className="text-2xl font-black text-gray-800">{week.risk_score.toFixed(1)}%</span>
         <RiskBadge riskBand={week.risk_band} size="sm" />
       </div>
+      {/* A red flag needs assessing today whatever else improved this week, so
+          it sits above the drivers rather than among them. */}
+      {week.red_flags?.length > 0 && (
+        <div className="mb-3 rounded-md bg-red-50 border border-red-200 px-2.5 py-1.5 text-xs text-red-800">
+          <span className="font-semibold">Red flag - assess today:</span> {week.red_flags.join(', ')}
+        </div>
+      )}
       {week.drivers?.length > 0 && (
         <div className="space-y-2">
           {week.drivers.map((d, idx) => (

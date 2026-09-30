@@ -347,8 +347,11 @@ function UserRow({ user, me, myId, isSuper, assignable, hospitals, insurers, hos
               <option value="">— choose —</option>
               {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
             </select>
-          ) : user.insurer_id
-            ? (insurers.find((i) => i.id === user.insurer_id)?.name || user.insurer_id)
+          ) : user.insurer_id || user.patient_insurer_id
+            // Insurer staff: the company they work for. A patient: the insurance
+            // on their patient record (looked up live by the auth service).
+            ? (insurers.find((i) => i.id === (user.insurer_id || user.patient_insurer_id))?.name
+               || user.insurer_id || user.patient_insurer_id)
             : <span className="text-gray-400">—</span>}
         </td>
       </>)}

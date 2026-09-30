@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import secrets
 from typing import Optional
 
@@ -53,6 +54,9 @@ ASSIGNABLE = {
 }
 
 MAX_IMPORT_ROWS = 1000
+
+# GLP-1's database, where each GLP-1 patient's record (insurer, care team) lives.
+GLP1_DB = os.environ.get("GLP1_DB", "glp1_analytics")
 
 # No 0/O or 1/l/I: the admin reads this out or types it into a message.
 _TEMP_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -226,8 +230,26 @@ def list_users(db, actor: dict, hospital_id: Optional[str] = None,
         query["status"] = status
     if role:
         query["role"] = role
-    return [admin_view(u) for u in
-            auth.users(db).find(query, {"password_hash": 0}).sort("created_at", -1)]
+    accounts = list(auth.users(db).find(query, {"password_hash": 0}).sort("created_at", -1))
+    insurance = patient_insurers(db, accounts)
+    return [{**admin_view(u), "patient_insurer_id": insurance.get(str(u["_id"]))} for u in accounts]
+
+
+def patient_insurers(db, accounts: list) -> dict:
+    """account id -> the insurer of the patient record that login opens.
+
+    A patient's insurance is kept on their patient record, not on the login
+    (a login's own insurer_id is only for insurer staff). Looked up live, so it
+    never goes stale: GLP-1's record first, else the Readmissions one."""
+    ids = [str(a["_id"]) for a in accounts if a.get("role") == "patient"]
+    if not ids:
+        return {}
+    found: dict = {}
+    for collection in (db.client[GLP1_DB]["patient_access"], db["care_actions"]):
+        for rec in collection.find({"patient_account_id": {"$in": ids}, "insurer_id": {"$nin": [None, ""]}},
+                                   {"patient_account_id": 1, "insurer_id": 1}):
+            found.setdefault(str(rec["patient_account_id"]), rec["insurer_id"])
+    return found
 
 
 def create_user(db, actor: dict, email: str, role: str, name: str = "",

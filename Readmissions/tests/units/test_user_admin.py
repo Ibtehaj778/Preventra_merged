@@ -328,6 +328,22 @@ def test_only_a_pending_request_can_be_declined(db, world):
     refused(409, ua.decline_signup, db, world["admin_a"], uid(db, "doc@a.org"))
 
 
+def test_a_patient_login_lists_the_insurer_of_its_patient_record(db, world):
+    ua.create_user(db, world["admin_a"], "pat@a.org", "patient", "Pat")
+    ua.create_user(db, world["admin_a"], "pat2@a.org", "patient", "Pat Two")
+    ua.create_user(db, world["admin_a"], "doc@a.org", "doctor", "Dr A")
+    db.client[ua.GLP1_DB]["patient_access"].insert_one(
+        {"patient_idx": 7, "hospital_id": "demo-hospital-a", "insurer_id": "medicare",
+         "patient_account_id": uid(db, "pat@a.org")})
+    db["care_actions"].insert_one({"patient_id": "MIMIC-1", "hospital_id": "demo-hospital-a",
+                                   "insurer_id": "private", "patient_account_id": uid(db, "pat2@a.org")})
+    listed = {u["email"]: u for u in ua.list_users(db, world["sa"])}
+    assert listed["pat@a.org"]["patient_insurer_id"] == "medicare"      # from GLP-1
+    assert listed["pat2@a.org"]["patient_insurer_id"] == "private"      # from Readmissions
+    assert listed["doc@a.org"]["patient_insurer_id"] is None
+    assert listed["pat@a.org"]["insurer_id"] is None                    # the login itself is unchanged
+
+
 def test_listed_accounts_never_carry_a_password_hash(db, world):
     assert all("password_hash" not in u for u in ua.list_users(db, world["sa"]))
 

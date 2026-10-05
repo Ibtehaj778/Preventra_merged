@@ -44,7 +44,7 @@ function SourceTag({ source, className = '' }) {
   return (
     <span
       title={source.channel || ''}
-      className={`inline-flex items-center gap-1 text-[11px] text-gray-400 ${className}`}
+      className={`inline-flex items-center gap-1 text-[11px] text-gray-500 ${className}`}
     >
       <Icon size={11} className="shrink-0" />
       <span>{source.feed}</span>
@@ -129,19 +129,19 @@ function WeekCard({ week, patientId, weekly, seriesDiagnosis, group, groupFocus 
       <div className="flex items-start justify-between mb-2">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
               {weekly
                 ? (week.week_number === 0 ? 'At Discharge' : `Week ${week.week_number}`)
                 : `Admission ${week.week_number}`}
             </span>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-500">
               · {weekly ? week.week_date : `discharged ${week.discharge_date || week.batch_date}`}
             </span>
           </div>
           {/* The elapsed time is the context that makes the delta readable: the
               same +16 points means something very different after 7 days than
               after 3 years. */}
-          <div className="text-xs text-gray-400 mt-0.5">
+          <div className="text-xs text-gray-500 mt-0.5">
             {week.rapid_return && (
               <span className="text-risk-high font-semibold mr-1">Rapid readmission · </span>
             )}
@@ -183,8 +183,12 @@ function WeekCard({ week, patientId, weekly, seriesDiagnosis, group, groupFocus 
               <div className="text-gray-700">
                 <span className="font-medium">{d.label}:</span> {d.value}
               </div>
+              {/* What the reading means for this patient - the part a reader
+                  needs most, so it is not the faintest text on the card. */}
               {d.explanation && (
-                <div className="text-gray-400 mt-0.5 leading-snug">{d.explanation}</div>
+                <div className="mt-1 border-l-2 border-ns-navy/25 pl-2 leading-snug text-gray-600">
+                  {d.explanation}
+                </div>
               )}
               <SourceTag source={d.source} className="mt-0.5" />
             </div>

@@ -366,7 +366,7 @@
 
     <p class="switch">
       <span id="switch-text">No account yet?</span>
-      <button type="button" class="linkish" id="switch-mode">Create one</button>
+      <button type="button" class="linkish" id="switch-mode">Sign up</button>
     </p>
   </main>
 
@@ -721,7 +721,7 @@
           `${CONFIG.AUTH_BASE_URL}${MODE === 'signup' ? '/auth/signup' : '/auth/login'} — ${err.message}`);
       } finally {
         button.disabled = false;
-        button.textContent = MODE === 'signup' ? 'Create account' : 'Sign in';
+        button.textContent = MODE === 'signup' ? 'Sign up' : 'Sign in';
       }
     });
 
@@ -734,14 +734,14 @@
     function setMode(mode) {
       MODE = mode;
       const up = mode === 'signup';
-      $('form-title').textContent = up ? 'Create account' : 'Sign in';
-      $('login-button').textContent = up ? 'Create account' : 'Sign in';
+      $('form-title').textContent = up ? 'Sign up' : 'Sign in';
+      $('login-button').textContent = up ? 'Sign up' : 'Sign in';
       $('signup-fields').classList.toggle('hidden', !up);
       $('signup-role').required = up;
       updateSignupFields();
       $('password').setAttribute('autocomplete', up ? 'new-password' : 'current-password');
       $('switch-text').textContent = up ? 'Already have an account?' : 'No account yet?';
-      $('switch-mode').textContent = up ? 'Sign in' : 'Create one';
+      $('switch-mode').textContent = up ? 'Sign in' : 'Sign up';
       clearError();
     }
 

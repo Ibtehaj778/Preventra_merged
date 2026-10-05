@@ -4,7 +4,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in</title>
+  <title>Preventra — Sign in to GLP-1 Analytics and Readmission Risk</title>
+  <!-- Who this page belongs to, stated plainly. A bare "Sign in" page on an
+       unfamiliar domain is what Google Safe Browsing reads as phishing, and it
+       flagged this one twice; naming the product, describing it and linking a
+       public About page is what separates a product's sign-in from a lure. -->
+  <meta name="description" content="Preventra is a clinical analytics platform for care teams: GLP-1 treatment analytics and 30-day hospital readmission risk monitoring. Sign in with your Preventra account.">
+  <meta property="og:site_name" content="Preventra">
+  <meta property="og:title" content="Preventra — Sign in">
+  <meta property="og:description" content="Preventra is a clinical analytics platform for care teams: GLP-1 treatment analytics and 30-day hospital readmission risk monitoring. Sign in with your Preventra account.">
+  <link rel="icon" type="image/png" href="logo.png">
 
   <!--
   Shared login portal.
@@ -76,6 +85,8 @@
       margin: 0;
       min-height: 100vh;
       display: grid;
+      /* The card centred in the space above, the footer at the bottom. */
+      grid-template-rows: 1fr auto;
       place-items: center;
       padding: 24px;
       background: var(--bg);
@@ -302,6 +313,23 @@
     .hidden {
       display: none;
     }
+
+    .site-footer {
+      margin-top: 24px;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .site-footer a {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .site-footer a:hover {
+      color: var(--text);
+    }
   </style>
 </head>
 
@@ -317,7 +345,10 @@
     </div>
 
     <h1 id="form-title">Sign in</h1>
-    <p class="sub">One account for GLP-1 Analytics and Readmission Risk.</p>
+    <p class="sub">
+      Preventra helps care teams track GLP-1 treatment outcomes and spot patients at risk of
+      hospital readmission. One account for GLP-1 Analytics and Readmission Risk.
+    </p>
 
     <div class="error hidden" id="login-error"></div>
 
@@ -427,6 +458,11 @@
     <p class="sub">You have access to the following.</p>
     <div class="tiles" id="tiles"></div>
   </main>
+
+  <footer class="site-footer">
+    Preventra · <a href="about.html">About</a> ·
+    <a href="mailto:ibtehaja77@gmail.com">Contact</a>
+  </footer>
 
   <script>
     const TOKEN_KEY = 'portal_token';

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, ListFilter, Activity } from 'lucide-react';
+import { Search, ListFilter, Activity, X } from 'lucide-react';
 
 // Post-discharge trend filters. "Needs Attention" is the triage shortcut —
 // it unions action_required + deteriorating, the two statuses that call for
@@ -11,6 +11,11 @@ const TREND_FILTERS = [
   { key: 'improving',      label: 'Improving',       active: 'bg-trend-improving text-white border-trend-improving' },
   { key: 'stable',         label: 'Stable',          active: 'bg-risk-low text-white border-risk-low' },
 ];
+
+// The two statuses "Needs Attention" unions. Not pills of their own, but a
+// link can filter on one of them alone (the chatbot's "deteriorating" does),
+// and an active filter the bar does not show reads as an unfiltered list.
+const SUB_TRENDS = { action_required: 'Action required', deteriorating: 'Deteriorating' };
 
 export default function FilterBar() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -80,6 +85,15 @@ export default function FilterBar() {
               </button>
             );
           })}
+          {SUB_TRENDS[trend] && (
+            <span className="inline-flex items-center gap-1 px-3 py-2 rounded-full text-sm font-medium border bg-risk-high text-white border-risk-high whitespace-nowrap">
+              {SUB_TRENDS[trend]}
+              <button type="button" onClick={() => updateParam('trend', 'All')}
+                aria-label="Clear trend filter" className="rounded-full hover:bg-white/20">
+                <X size={14} />
+              </button>
+            </span>
+          )}
         </div>
 
         {/* Risk Filter Pills */}

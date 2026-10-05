@@ -116,6 +116,10 @@ def as_user(main, world, email):
                       raise_server_exceptions=False)
 
 
+def mentioned_text(text: str) -> set:
+    return {pid for pid in EVERYONE if re.search(rf"\b{re.escape(pid)}\b", text)}
+
+
 def mentioned(response) -> set:
     """Every test patient id that appears anywhere in a response."""
     text = response.text
@@ -271,3 +275,57 @@ def test_a_red_flag_in_the_latest_week_means_action_required(main, world):
     assert body["monitoring_status"] == "action_required"
     assert body["weeks"][-1]["red_flags"] == ["oxygen saturation below 90%"]
     assert body["weeks"][0]["red_flags"] == []
+
+
+# Every function the chatbot can call, with arguments that try to reach other
+# patients: their ids by name, cohort-wide questions, and filters that would
+# match everyone.
+CHATBOT_CALLS = [
+    ("count_patients", {}),
+    ("count_patients_by_risk_band", {}),
+    ("count_patients_by_risk_band", {"risk_band": "High"}),
+    ("list_patients_by_risk_threshold", {"operator": ">=", "threshold": 0, "limit": 50}),
+    ("get_top_risk_patients", {"n": 50}),
+    ("get_risk_trend_over_time", {}),
+    ("get_common_conditions", {}),
+    ("get_common_diagnoses", {}),
+    ("get_common_drivers", {}),
+    ("get_condition_overlap", {}),
+    ("get_risk_change_since_discharge", {"direction": "increase"}),
+    ("get_risk_change_since_discharge", {"direction": "decrease"}),
+    ("run_cohort_query", {"group_by": "patient_id", "top_n": 50}),
+    ("run_cohort_query", {"filters": [{"field": "current_score", "op": "gte", "value": 0}]}),
+    ("list_patients", {"limit": 50}),
+    ("list_patients", {"filters": [{"field": "clinical_group", "op": "eq", "value": "heart_failure"}],
+                       "limit": 50}),
+    ("list_registered_doctors", {}),
+    ("get_doctor_workload", {}),
+    ("get_alert_routing", {}),
+] + [(name, {"patient_id": pid}) for name in ("get_patient_details", "get_patient_drivers")
+     for pid in sorted(EVERYONE)]
+
+
+@pytest.mark.parametrize("name, args", CHATBOT_CALLS,
+                         ids=[f"{n}-{a.get('patient_id', i)}" for i, (n, a) in enumerate(CHATBOT_CALLS)])
+def test_a_patient_asking_the_chatbot_only_ever_hears_about_themselves(main, world, name, args):
+    """Signed in as a patient, every chatbot function - however it is called -
+    answers from that patient's own record or says there is nothing to find."""
+    from api import chatbot_service
+    user = auth.effective(auth.users(world["db"]).find_one({"email": "me@patient.test"}))
+    view = access.scoped(world["db"], user)
+    asked = args.get("patient_id")
+    try:
+        result = chatbot_service._dispatch(name, dict(args), view)
+    except (LookupError, ValueError, KeyError) as refused:
+        result = str(refused)
+        if asked and asked != A4:
+            # Someone else's id gets exactly the answer a made-up id gets, so
+            # asking reveals nothing - not even that the patient exists.
+            try:
+                chatbot_service._dispatch(name, {"patient_id": "MIMIC-0000"}, view)
+            except LookupError as missing:
+                assert result == str(missing).replace("MIMIC-0000", asked)
+            return
+    assert mentioned_text(json.dumps(result, default=str)) <= {A4}, name
+    if asked and asked != A4:
+        raise AssertionError(f"{name} answered about {asked} for a patient account")

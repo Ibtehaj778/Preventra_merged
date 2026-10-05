@@ -28,7 +28,7 @@ from api import access
 from api import access_log
 from api import hospital
 from api import risk_watch
-from api.chatbot_service import answer_question
+from api.chatbot_service import answer_turn
 from api.chatbot_queries import _patient_id_filter
 from api.gemini_insights import generate_roi_and_counterfactual, generate_week_narrative
 from models import early_warning
@@ -1662,14 +1662,16 @@ class ChatbotQueryRequest(BaseModel):
 def chatbot_query(payload: ChatbotQueryRequest, request: Request):
     # The chatbot reads through the caller's view of the database, so every
     # question - however it is phrased - is answered from their patients only.
+    # `entities` are the patient ids, conditions, diagnoses and clinicians the
+    # answer was phrased from, which the chat window turns into links.
     try:
-        answer = answer_question(
+        return answer_turn(
             payload.question, _view(request),
             history=[m.model_dump() for m in payload.history])
     except Exception as exc:
         print(f"[chatbot] unexpected error handling question: {exc}")
-        answer = "Sorry, I couldn't process that question. Please try again in a moment."
-    return {"answer": answer}
+        return {"answer": "Sorry, I couldn't process that question. Please try again in a moment.",
+                "entities": []}
 
 
 # ---------------------------------------------------------------------------

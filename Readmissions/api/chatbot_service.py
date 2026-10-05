@@ -18,6 +18,7 @@ import json
 import re
 
 from api import chatbot_queries
+from api.chatbot_links import extract_entities
 from api.chatbot_gemini import (
     GENERAL_QUESTION,
     generate_general_answer,
@@ -274,10 +275,12 @@ def _dispatch(name: str, args: dict, db):
     raise ValueError(f"Unrecognized function selection '{name}'.")
 
 
-def answer_question(question: str, db, history=None) -> str:
+def _run_turn(question: str, db, history=None) -> tuple:
+    """One turn: the answer text, and the query result it was phrased from
+    (None when no query ran - a refusal, an error or a general answer)."""
     question = (question or "").strip()
     if not question:
-        return "Please enter a question."
+        return "Please enter a question.", None
 
     history = _clean_history(history)
 
@@ -293,17 +296,17 @@ def answer_question(question: str, db, history=None) -> str:
         selection = select_function_call(question, history, vocabularies=vocabularies)
     except Exception as exc:
         print(f"[chatbot] Gemini function selection failed: {exc}")
-        return _llm_error_message(exc)
+        return _llm_error_message(exc), None
 
     if selection is None:
-        return CANNOT_ANSWER_MESSAGE
+        return CANNOT_ANSWER_MESSAGE, None
 
     if selection == GENERAL_QUESTION:
         try:
-            return generate_general_answer(question, history) or CANNOT_ANSWER_MESSAGE
+            return generate_general_answer(question, history) or CANNOT_ANSWER_MESSAGE, None
         except Exception as exc:
             print(f"[chatbot] Gemini general answer failed: {exc}")
-            return _llm_error_message(exc)
+            return _llm_error_message(exc), None
 
     name = selection.get("name")
     args = selection.get("args") or {}
@@ -320,29 +323,48 @@ def answer_question(question: str, db, history=None) -> str:
             print(f"[chatbot] invalid arguments selected for '{name}' "
                   f"(attempt {attempt + 1}): {exc}")
             if attempt >= MAX_CORRECTION_ATTEMPTS:
-                return CANNOT_ANSWER_MESSAGE
+                return CANNOT_ANSWER_MESSAGE, None
             try:
                 retry = select_function_call(
                     question, history, vocabularies=vocabularies,
                     correction={"name": name, "args": args, "error": str(exc)})
             except Exception as retry_exc:
                 print(f"[chatbot] correction pass failed: {retry_exc}")
-                return _llm_error_message(retry_exc)
+                return _llm_error_message(retry_exc), None
             if not isinstance(retry, dict):
-                return CANNOT_ANSWER_MESSAGE
+                return CANNOT_ANSWER_MESSAGE, None
             name, args = retry.get("name"), retry.get("args") or {}
         except LookupError as exc:
             print(f"[chatbot] lookup failed for '{name}': {exc}")
-            return str(exc)
+            return str(exc), None
         except Exception as exc:
             print(f"[chatbot] MongoDB query failed for '{name}': {exc}")
-            return "Sorry, something went wrong while retrieving that data. Please try again in a moment."
+            return "Sorry, something went wrong while retrieving that data. Please try again in a moment.", None
 
     try:
         answer = generate_natural_language_answer(question, name, result, history)
     except Exception as exc:
         print(f"[chatbot] Gemini answer generation failed: {exc}")
-        return _llm_error_message(exc)
+        return _llm_error_message(exc), None
 
     _report_ungrounded(answer, result, name)
-    return answer
+    return answer, result
+
+
+def answer_question(question: str, db, history=None) -> str:
+    return _run_turn(question, db, history)[0]
+
+
+def answer_turn(question: str, db, history=None) -> dict:
+    """
+    The answer, plus the values in it that the chat window can link: patient
+    ids, conditions, diagnoses and clinicians taken from the data the answer
+    was phrased from (see chatbot_links), never from the model's prose.
+    """
+    answer, result = _run_turn(question, db, history)
+    try:
+        entities = extract_entities(result, db)
+    except Exception as exc:
+        print(f"[chatbot] could not extract answer links: {exc}")
+        entities = []
+    return {"answer": answer, "entities": entities}
